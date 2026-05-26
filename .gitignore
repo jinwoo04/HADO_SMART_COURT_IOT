@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# 가상환경
+hado_venv/
+
+# macOS
+.DS_Store
+
+# 캘리브레이션 (카메라별 고유값, 커밋 금지)
+config/calibration.json
+
+# 런타임 생성 데이터
+data/position_logs/
+data/snapshots/
+data/*.mp4
+data/*.png
+
+# YOLO 모델 (대용량 바이너리)
+models/
+*.pt

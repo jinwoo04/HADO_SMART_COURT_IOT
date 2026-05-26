@@ -1,0 +1,35 @@
+[Unit]
+Description=HADO Smart Court IoT — Real-time player tracking + tactical guidance
+After=network.target multi-user.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/hado-smart-court-iot
+
+# 가상환경 + 헤드리스 모드로 실행 + mp4 저장
+# (모니터 연결돼 있으면 --headless 빼면 됨)
+Environment="PATH=/home/pi/hado_venv/bin:/usr/bin:/bin"
+ExecStart=/home/pi/hado_venv/bin/python -m src.main \
+    --level 2 \
+    --voice \
+    --headless \
+    --record /home/pi/hado-smart-court-iot/data/auto_recordings/%i.mp4
+
+# Pi 재부팅 후 5초 기다렸다 시작 (카메라 인식 시간)
+ExecStartPre=/bin/sleep 5
+
+# 비정상 종료 시 자동 재시작 (최대 3번까지)
+Restart=on-failure
+RestartSec=10
+StartLimitBurst=3
+StartLimitIntervalSec=300
+
+# 로그
+StandardOutput=append:/home/pi/hado-smart-court-iot/data/hado.log
+StandardError=append:/home/pi/hado-smart-court-iot/data/hado.err.log
+
+[Install]
+WantedBy=multi-user.target

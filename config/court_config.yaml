@@ -1,0 +1,43 @@
+# HADO 코트 설정
+court:
+  # 실제 코트 규격 (meter)
+  width_m: 6.0       # 가로 (긴 변)
+  height_m: 2.66     # 세로 (짧은 변)
+
+  # Bird-eye view 렌더링 크기 (픽셀)
+  # 1m = 100px 비율 → 600 × 266 픽셀
+  render_scale_px_per_m: 100
+
+  # 시각화 색상 (BGR)
+  bg_color: [40, 50, 35]         # 진녹색 (HADO 코트 분위기)
+  line_color: [255, 255, 255]    # 흰 라인
+  center_line_color: [180, 180, 60]
+
+camera:
+  # 입력 해상도
+  width: 1280
+  height: 720
+  fps: 30
+
+detector:
+  # YOLOv8 모델 (yolov8n.pt / yolov8s.pt / yolov8n_hado.pt)
+  model_path: "yolov8n.pt"
+  # 추론 입력 크기 (작을수록 빠름, 정확도 trade-off)
+  imgsz: 320
+  # 신뢰도 임계값
+  conf_threshold: 0.35
+  # NMS IoU 임계값
+  iou_threshold: 0.5
+  # person class id (COCO)
+  target_class: 0
+
+tracker:
+  # 다중 ID 추적 파라미터
+  max_lost_frames: 15      # 이만큼 감지 안되면 ID 삭제
+  iou_threshold: 0.3       # 같은 사람으로 판단할 IoU 임계값
+
+visualization:
+  trajectory_length: 30    # 궤적 표시할 최근 프레임 수
+  player_radius_px: 12
+  show_id: true
+  show_fps: true
