@@ -162,12 +162,13 @@ def run():
     arrows: List[Arrow] = []
 
     state = {
-        "player_id": 1,
-        "context":   "",
-        "mode":      "from",      # "from" | "to"
-        "pt_from":   None,        # (x_m, y_m)
-        "hover_m":   (0.0, 0.0),
-        "arrows":    arrows,
+        "player_id":   1,
+        "context":     "",
+        "mode":        "from",      # "from" | "to"
+        "pt_from":     None,        # (x_m, y_m)
+        "hover_m":     (0.0, 0.0),
+        "arrows":      arrows,
+        "saved_count": 0,           # 마지막 저장 시점의 화살표 수
     }
 
     def on_mouse(event, x, y, flags, _param):
@@ -177,6 +178,11 @@ def run():
 
         if event == cv2.EVENT_LBUTTONDOWN and 0 <= y < CH:
             mx, my = px_to_m(x, y)
+            team = "A" if state["player_id"] <= 3 else "B"
+            # 진영 불가침: 팀A는 x<3.0, 팀B는 x>3.0
+            if (team == "A" and mx >= 3.0) or (team == "B" and mx <= 3.0):
+                print(f"[Annotate] 진영 침범 불가 — 팀{team} 선수는 {'x<3.0' if team=='A' else 'x>3.0'} 영역만 가능")
+                return
             if state["mode"] == "from":
                 state["pt_from"] = (mx, my)
                 state["mode"]    = "to"
@@ -232,10 +238,10 @@ def run():
 
         key = cv2.waitKey(20) & 0xFF
         if key == 27:  # ESC
-            _save_csv(arrows)
+            _save_csv(arrows, state)
             break
         elif key == ord('s'):
-            _save_csv(arrows)
+            _save_csv(arrows, state)
         elif key == ord('u'):
             if state["mode"] == "to":
                 state["pt_from"] = None
@@ -253,9 +259,10 @@ def run():
     cv2.destroyAllWindows()
 
 
-def _save_csv(arrows: List[Arrow]):
-    if not arrows:
-        print("[Annotate] 저장할 데이터 없음")
+def _save_csv(arrows: List[Arrow], state: dict):
+    new_arrows = arrows[state["saved_count"]:]
+    if not new_arrows:
+        print("[Annotate] 새로 저장할 데이터 없음")
         return
     OUTPUT_CSV.parent.mkdir(parents=True, exist_ok=True)
     exists = OUTPUT_CSV.exists()
@@ -264,14 +271,15 @@ def _save_csv(arrows: List[Arrow]):
         if not exists:
             writer.writerow(CSV_HEADER)
         ts = time.strftime("%Y-%m-%d %H:%M:%S")
-        for arr in arrows:
+        for arr in new_arrows:
             writer.writerow([
                 arr.player_id, arr.team,
                 arr.from_m[0], arr.from_m[1],
                 arr.to_m[0],   arr.to_m[1],
                 arr.context,   ts,
             ])
-    print(f"[Annotate] {len(arrows)}개 화살표 → {OUTPUT_CSV}")
+    state["saved_count"] = len(arrows)
+    print(f"[Annotate] {len(new_arrows)}개 저장 (누적 {len(arrows)}개) → {OUTPUT_CSV}")
 
 
 def main():
