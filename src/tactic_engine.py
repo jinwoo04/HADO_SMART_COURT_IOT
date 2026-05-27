@@ -108,15 +108,19 @@ class TacticEngine:
         court_height_m: float = 2.66,
         spacing_min_m: float = 1.0,
         counter_range_m: float = 2.5,
+        counter_y_offset_m: float = 0.6,
         gap_min_m: float = 2.0,
         backline_depth_m: float = 1.5,
+        coverage_spread_min_m: float = 0.8,
     ):
         self.court_width = court_width_m
         self.court_height = court_height_m
         self.spacing_min = spacing_min_m
         self.counter_range = counter_range_m
+        self.counter_y_offset = counter_y_offset_m
         self.gap_min = gap_min_m
         self.backline_depth = backline_depth_m
+        self.coverage_spread_min = coverage_spread_min_m
         self._team_assignment: Dict[int, str] = {}
 
     # ----- 팀 배정 -----
@@ -201,7 +205,7 @@ class TacticEngine:
         threats = [
             o for o in opponents
             if _dist(o.pos, me.pos) < self.counter_range
-            and abs(o.court_y - me.court_y) < 0.6
+            and abs(o.court_y - me.court_y) < self.counter_y_offset
         ]
         if threats:
             nearest = min(threats, key=lambda o: _dist(o.pos, me.pos))
@@ -258,7 +262,7 @@ class TacticEngine:
         if teammates:
             ys = [t.court_y for t in teammates] + [me.court_y]
             spread = max(ys) - min(ys)
-            if spread < 0.8:
+            if spread < self.coverage_spread_min:
                 # 내가 그룹의 위/아래 극단이면 그 방향으로 더 이동
                 team_y_avg = sum(ys) / len(ys)
                 if me.court_y >= team_y_avg:
