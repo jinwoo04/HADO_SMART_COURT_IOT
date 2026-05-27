@@ -10,6 +10,7 @@
 우클릭      : 현재 출발점 취소
 u           : 마지막 화살표 실행 취소
 1~6         : 선수 번호 선택 (1-3=팀A, 4-6=팀B)
+q / w / e   : 포지션 (q=메인공격수 / w=테크니션 / e=디펜더)
 a / d / t   : 컨텍스트  (a=공격 / d=수비 / t=전환)
 s           : CSV 저장 (자동 누적)
 ESC         : 저장 후 종료
@@ -55,8 +56,11 @@ PLAYER_COLORS: dict[int, tuple[int, int, int]] = {
 }
 
 CONTEXT_MAP = {"a": "attack", "d": "defend", "t": "transition", "n": ""}
+ROLE_MAP    = {"q": "main_attacker", "w": "technician", "e": "defender", "r": ""}
+ROLE_KO     = {"main_attacker": "메인공격수", "technician": "테크니션",
+               "defender": "디펜더", "": "미지정"}
 OUTPUT_CSV = Path(__file__).resolve().parent.parent / "data" / "movement_data.csv"
-CSV_HEADER = ["player_id", "team", "from_x", "from_y", "to_x", "to_y", "context", "timestamp"]
+CSV_HEADER = ["player_id", "team", "role", "from_x", "from_y", "to_x", "to_y", "context", "timestamp"]
 
 
 # ── 데이터 ─────────────────────────────────────────────────
@@ -65,6 +69,7 @@ class Arrow:
     player_id: int
     from_m:   Tuple[float, float]
     to_m:     Tuple[float, float]
+    role:     str = ""
     context:  str = ""
 
     @property
@@ -125,7 +130,9 @@ def _draw_arrow(img: np.ndarray, arrow: Arrow):
     color = PLAYER_COLORS.get(arrow.player_id, (200, 200, 200))
     cv2.arrowedLine(img, (fx, fy), (tx, ty), color, 2, cv2.LINE_AA, tipLength=0.25)
     cv2.circle(img, (fx, fy), 6, color, -1, cv2.LINE_AA)
-    cv2.putText(img, str(arrow.player_id), (fx + 7, fy - 5),
+    role_abbr = {"main_attacker": "M", "technician": "T", "defender": "D"}.get(arrow.role, "?")
+    label = f"{arrow.player_id}{role_abbr}"
+    cv2.putText(img, label, (fx + 7, fy - 5),
                 cv2.FONT_HERSHEY_PLAIN, 1.0, color, 1, cv2.LINE_AA)
 
 
@@ -141,14 +148,15 @@ def _draw_status(canvas: np.ndarray, state: dict):
     pt_from    = state["pt_from"]
     mode       = state["mode"]
 
-    color = PLAYER_COLORS.get(player_id, (200, 200, 200))
-    team  = "A" if player_id <= 3 else "B"
+    color   = PLAYER_COLORS.get(player_id, (200, 200, 200))
+    team    = "A" if player_id <= 3 else "B"
+    role_ko = ROLE_KO.get(state.get("role", ""), "미지정")
 
     lines = [
-        f"선수: {player_id}  팀: {team}    컨텍스트: {context}    저장된 화살표: {len(arrows)}",
+        f"선수: {player_id}  팀: {team}  포지션: {role_ko}  컨텍스트: {context}  저장: {len(arrows)}개",
         f"마우스: ({hover_m[0]:.2f}, {hover_m[1]:.2f}) m",
         f"상태: {'출발점 지정 중' if mode == 'from' else '도착점 지정 중 (출발: ' + str(pt_from) + ')'}",
-        "키: [1-6]선수  [a]공격  [d]수비  [t]전환  [u]되돌리기  [s]저장  [ESC]종료",
+        "키: [1-6]선수  [q]메인공격수 [w]테크니션 [e]디펜더  [a/d/t]컨텍스트  [u]취소  [s]저장  [ESC]종료",
     ]
     for i, line in enumerate(lines):
         cv2.putText(canvas, line, (10, y0 + 22 + i * 26),
@@ -163,6 +171,7 @@ def run():
 
     state = {
         "player_id":   1,
+        "role":        "",
         "context":     "",
         "mode":        "from",      # "from" | "to"
         "pt_from":     None,        # (x_m, y_m)
@@ -191,6 +200,7 @@ def run():
                     player_id=state["player_id"],
                     from_m=state["pt_from"],
                     to_m=(mx, my),
+                    role=state["role"],
                     context=state["context"],
                 ))
                 state["pt_from"] = None
@@ -252,6 +262,9 @@ def run():
         elif chr(key) in "123456":
             state["player_id"] = int(chr(key))
             print(f"[Annotate] 선수 {state['player_id']} 선택")
+        elif chr(key) in ROLE_MAP:
+            state["role"] = ROLE_MAP[chr(key)]
+            print(f"[Annotate] 포지션: '{ROLE_KO[state['role']]}'")
         elif chr(key) in CONTEXT_MAP:
             state["context"] = CONTEXT_MAP[chr(key)]
             print(f"[Annotate] 컨텍스트: '{state['context'] or '없음'}'")
@@ -273,7 +286,7 @@ def _save_csv(arrows: List[Arrow], state: dict):
         ts = time.strftime("%Y-%m-%d %H:%M:%S")
         for arr in new_arrows:
             writer.writerow([
-                arr.player_id, arr.team,
+                arr.player_id, arr.team, arr.role,
                 arr.from_m[0], arr.from_m[1],
                 arr.to_m[0],   arr.to_m[1],
                 arr.context,   ts,
