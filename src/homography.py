@@ -132,7 +132,7 @@ def is_inside_court(points_m: np.ndarray, calib: Calibration, margin_m: float = 
 # ---------- 단독 테스트 ----------
 def main():
     """단독 실행: 더미 데이터로 변환 정확도 확인."""
-    # 시뮬레이션: 1280x720 카메라가 비스듬히 6m x 2.66m 코트를 본다고 가정
+    # 시뮬레이션: 1280x720 카메라가 비스듬히 10m x 6m 코트를 본다고 가정
     fake_corners_px = np.array([
         [200, 200],   # 좌상
         [1080, 250],  # 우상 (원근감 때문에 약간 안쪽)
@@ -142,8 +142,8 @@ def main():
 
     calib = compute_homography(
         corners_pixel=fake_corners_px,
-        court_width_m=6.0,
-        court_height_m=2.66,
+        court_width_m=10.0,
+        court_height_m=6.0,
         image_size=(1280, 720),
     )
     print("[Homography] 계산 완료")

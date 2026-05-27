@@ -8,8 +8,8 @@ Treat it as standing orders. Keep it concise — long files get partially ignore
 ## What this project is
 
 A real-time player tracking and tactical guidance system for HADO, an AR-based
-physical e-sport on a 6.0 × 2.66 m court. Runs entirely on a single Raspberry Pi 4
-with a fixed camera. No cloud, no internet.
+physical e-sport on a 10.0 × 6.0 m court (높이 2.66 m). Runs entirely on a single
+Raspberry Pi 4 with a fixed camera. No cloud, no internet.
 
 **Owner**: Jinu Park (박진우), HUFS Computer Engineering, piaojinu@hufs.ac.kr
 **Spec**: IoT Term Project, Spring 2026. Final submission June 22, 2026.
@@ -71,7 +71,9 @@ python -m tests.test_homography    # just homography tests
 ## Coordinate convention
 
 - **Pixel space**: (x_px, y_px) — origin top-left, y grows downward
-- **Court space**: (x_m, y_m) in meters — origin top-left of court, x grows right (along the 6.0 m axis), y grows down (along the 2.66 m axis)
+- **Court space**: (x_m, y_m) in meters — origin top-left of court, x grows right (along the 10.0 m axis, team boundary at x=5.0), y grows down (along the 6.0 m axis)
+- **Zone lines (x)**: 1.5 m, 3.0 m | 7.0 m, 8.5 m — 팀A: 3선/2선/1선, 팀B 미러
+- **Lane lines (y)**: 2.0 m, 4.0 m — 코트를 3개 레인(선수별 담당 구역)으로 분할
 - **Foot point**: bottom-center of bounding box = `((x1+x2)/2, y2)`. Use this for homography projection — NOT the center of the box.
 
 ---

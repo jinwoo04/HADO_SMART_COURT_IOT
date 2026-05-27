@@ -30,8 +30,8 @@ from src.visualizer import (
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-_COURT_W = 6.0
-_COURT_H = 2.66
+_COURT_W = 10.0
+_COURT_H = 6.0
 _FRAME_W, _FRAME_H = 1280, 720
 
 
@@ -52,10 +52,12 @@ def _make_calib():
 
 # (base_x, base_y, amp_x, amp_y, freq_x, freq_y, phase)
 _PLAYER_PARAMS = [
-    (1.2, 0.80, 0.60, 0.35, 0.80, 1.10, 0.0),   # #1 Team A
-    (2.0, 1.90, 0.50, 0.45, 1.20, 0.70, 1.5),   # #2 Team A
-    (4.8, 0.70, 0.60, 0.35, 0.90, 1.30, 0.8),   # #3 Team B
-    (4.1, 1.80, 0.50, 0.40, 1.10, 0.80, 2.3),   # #4 Team B
+    (2.0, 1.5, 1.2, 1.0, 0.80, 1.10, 0.0),   # #1 Team A (technician)
+    (1.5, 4.0, 1.0, 1.2, 1.20, 0.70, 1.5),   # #2 Team A (defender)
+    (3.5, 3.0, 1.0, 1.5, 0.90, 1.30, 0.8),   # #3 Team A (main attacker)
+    (8.0, 1.5, 1.2, 1.0, 0.80, 1.10, 1.6),   # #4 Team B
+    (8.5, 4.0, 1.0, 1.2, 1.20, 0.70, 2.8),   # #5 Team B
+    (6.5, 3.0, 1.0, 1.5, 0.90, 1.30, 3.5),   # #6 Team B
 ]
 
 
@@ -76,8 +78,8 @@ def _build_camera_bg(calib) -> np.ndarray:
     cv2.polylines(bg, [pts], True, (200, 200, 200), 2)
 
     # 중앙선
-    mid_top = court_to_pixel(np.array([[3.0, 0.0]]), calib)[0].astype(int)
-    mid_bot = court_to_pixel(np.array([[3.0, _COURT_H]]), calib)[0].astype(int)
+    mid_top = court_to_pixel(np.array([[5.0, 0.0]]), calib)[0].astype(int)
+    mid_bot = court_to_pixel(np.array([[5.0, _COURT_H]]), calib)[0].astype(int)
     cv2.line(bg, tuple(mid_top), tuple(mid_bot), (150, 150, 60), 1, cv2.LINE_AA)
 
     # 1m 그리드

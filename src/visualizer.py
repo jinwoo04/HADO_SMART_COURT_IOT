@@ -183,12 +183,12 @@ def main():
 
     calib = compute_homography(
         corners_pixel=np.array([[100, 100], [1180, 100], [1180, 600], [100, 600]], dtype=np.float32),
-        court_width_m=6.0,
-        court_height_m=2.66,
+        court_width_m=10.0,
+        court_height_m=6.0,
         image_size=(1280, 720),
     )
 
-    court = render_court_birdeye(calib, px_per_m=100)
+    court = render_court_birdeye(calib, px_per_m=80)
     print(f"코트 이미지 크기: {court.shape}")
 
     # 더미 트랙 2명

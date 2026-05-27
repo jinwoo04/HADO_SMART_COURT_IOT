@@ -5,7 +5,7 @@
 설계 원칙
 ---------
 1. **Rule-based 우선**: ML 없이도 의미 있는 가이드가 가능해야 한다.
-2. **HADO 특화**: 6m × 2.66m 코트, 2 vs 2 또는 3 vs 3 기준.
+2. **HADO 특화**: 10m × 6m 코트 (높이 2.66m), 3 vs 3 기준.
 3. **확장 가능**: 누적 데이터가 쌓이면 ML 규칙으로 교체할 수 있게 인터페이스 분리.
 
 기본 전술 규칙
@@ -104,8 +104,8 @@ class TacticEngine:
 
     def __init__(
         self,
-        court_width_m: float = 6.0,
-        court_height_m: float = 2.66,
+        court_width_m: float = 10.0,
+        court_height_m: float = 6.0,
         spacing_min_m: float = 1.0,
         counter_range_m: float = 2.5,
         counter_y_offset_m: float = 0.6,

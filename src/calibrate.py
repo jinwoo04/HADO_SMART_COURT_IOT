@@ -167,8 +167,8 @@ def main():
     parser.add_argument("--source", default=0, help="카메라 소스")
     parser.add_argument("--width", type=int, default=1280)
     parser.add_argument("--height", type=int, default=720)
-    parser.add_argument("--court-width", type=float, default=6.0, help="코트 가로 (m)")
-    parser.add_argument("--court-height", type=float, default=2.66, help="코트 세로 (m)")
+    parser.add_argument("--court-width", type=float, default=10.0, help="코트 가로 (m)")
+    parser.add_argument("--court-height", type=float, default=6.0, help="코트 세로 (m)")
     parser.add_argument("--output", default="config/calibration.json")
     args = parser.parse_args()
 

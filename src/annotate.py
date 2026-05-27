@@ -59,12 +59,12 @@ def put_text_kr(img: np.ndarray, text: str, xy: Tuple[int,int],
     img[:] = cv2.cvtColor(np.array(pil), cv2.COLOR_RGB2BGR)
 
 # ── 코트 상수 ──────────────────────────────────────────────
-COURT_W_M = 6.0
-COURT_H_M = 2.66
-PX_PER_M  = 160          # 960 × 426 px
+COURT_W_M = 10.0
+COURT_H_M = 6.0
+PX_PER_M  = 80           # 800 × 480 px
 
-CW = int(COURT_W_M * PX_PER_M)   # 960
-CH = int(COURT_H_M * PX_PER_M)   # 426
+CW = int(COURT_W_M * PX_PER_M)   # 800
+CH = int(COURT_H_M * PX_PER_M)   # 480
 STATUS_H = 130
 WIN_W, WIN_H = CW, CH + STATUS_H
 
@@ -149,11 +149,40 @@ def _make_court() -> np.ndarray:
             cv2.putText(img, f"{ym}m", (3, min(CH - 4, yp + 12)),
                         cv2.FONT_HERSHEY_PLAIN, 0.75, GRID_C, 1, cv2.LINE_AA)
 
+    # ── 세로 레인선 (y=2.0m, 4.0m) — 선수별 담당 레인
+    LANE_C = (80, 80, 160)   # 보라색
+    for ym in [2.0, 4.0]:
+        yp = int(ym * PX_PER_M)
+        cv2.line(img, (0, yp), (CW, yp), LANE_C, 1, cv2.LINE_AA)
+    # 레인 번호 (우측 여백)
+    for lane, ym_center in enumerate([1.0, 3.0, 5.0], start=1):
+        yp = int(ym_center * PX_PER_M)
+        cv2.putText(img, f"L{lane}", (CW - 28, yp + 5),
+                    cv2.FONT_HERSHEY_PLAIN, 1.0, LANE_C, 1, cv2.LINE_AA)
+
+    # ── 가로 구역선 (1.5m, 3.0m, 7.0m, 8.5m) + 구역 번호
+    # 팀A: 0~1.5=3선, 1.5~3=2선, 3~5=1선 / 팀B 미러
+    ZONE_C = (100, 180, 100)   # 연두색
+    zone_xs = [1.5, 3.0, 7.0, 8.5]
+    for xm in zone_xs:
+        xp = int(xm * PX_PER_M)
+        cv2.line(img, (xp, 0), (xp, CH), ZONE_C, 1, cv2.LINE_AA)
+
+    # 구역 레이블 (상단 y=10px)
+    zone_labels = [
+        (0.75,  "3"), (2.25, "2"), (4.0,  "1"),   # 팀A
+        (6.0,   "1"), (7.75, "2"), (9.25, "3"),   # 팀B
+    ]
+    for xm, label in zone_labels:
+        xp = int(xm * PX_PER_M) - 6
+        cv2.putText(img, label, (xp, 22),
+                    cv2.FONT_HERSHEY_PLAIN, 1.2, ZONE_C, 1, cv2.LINE_AA)
+
     # 팀 구역 레이블
-    cv2.putText(img, "Team A", (20, CH - 12),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 160, 255), 1, cv2.LINE_AA)
-    cv2.putText(img, "Team B", (CW - 100, CH - 12),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 140, 0), 1, cv2.LINE_AA)
+    cv2.putText(img, "Team A", (10, CH - 8),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 160, 255), 1, cv2.LINE_AA)
+    cv2.putText(img, "Team B", (CW - 80, CH - 8),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 140, 0), 1, cv2.LINE_AA)
     return img
 
 
@@ -221,9 +250,9 @@ def run():
         if event == cv2.EVENT_LBUTTONDOWN and 0 <= y < CH:
             mx, my = px_to_m(x, y)
             team = "A" if state["player_id"] <= 3 else "B"
-            # 진영 불가침: 팀A는 x<3.0, 팀B는 x>3.0
-            if (team == "A" and mx >= 3.0) or (team == "B" and mx <= 3.0):
-                print(f"[Annotate] 진영 침범 불가 — 팀{team} 선수는 {'x<3.0' if team=='A' else 'x>3.0'} 영역만 가능")
+            # 진영 불가침: 팀A는 x<5.0, 팀B는 x>5.0
+            if (team == "A" and mx >= 5.0) or (team == "B" and mx <= 5.0):
+                print(f"[Annotate] 진영 침범 불가 — 팀{team} 선수는 {'x<5.0' if team=='A' else 'x>5.0'} 영역만 가능")
                 return
             if state["mode"] == "from":
                 state["pt_from"] = (mx, my)

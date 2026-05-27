@@ -1,12 +1,13 @@
 # HADO 코트 설정
 court:
   # 실제 코트 규격 (meter)
-  width_m: 6.0       # 가로 (긴 변)
-  height_m: 2.66     # 세로 (짧은 변)
+  width_m: 10.0      # 가로 (팀 대면 방향, 긴 변) — 각 팀 진영 5m
+  height_m: 6.0      # 세로 (좌우 방향, 짧은 변)
+  # 참고: 높이(z축) 2.66m는 물리적 천장 경계이며 2D 추적에는 사용 안 함
 
   # Bird-eye view 렌더링 크기 (픽셀)
-  # 1m = 100px 비율 → 600 × 266 픽셀
-  render_scale_px_per_m: 100
+  # 1m = 80px 비율 → 800 × 480 픽셀
+  render_scale_px_per_m: 80
 
   # 시각화 색상 (BGR)
   bg_color: [40, 50, 35]         # 진녹색 (HADO 코트 분위기)
@@ -43,15 +44,15 @@ visualization:
   show_fps: true
 
 tactic:
-  # R1 Spacing: 팀원간 이 거리 이내면 분산 권고 (m)
-  spacing_min_m: 1.0
+  # R1 Spacing: 팀원간 이 거리 이내면 분산 권고 (m) — 10×6 코트 기준
+  spacing_min_m: 1.5
   # R3 Counter: 이 거리 이내 정면 적이 있으면 측면 회피 (m)
-  counter_range_m: 2.5
+  counter_range_m: 3.0
   # R3 Counter: 정면으로 인정할 y축 오프셋 (m)
-  counter_y_offset_m: 0.6
+  counter_y_offset_m: 1.0
   # R4 Gap Attack: 적 사이 공간이 이 이상이면 공격 전진 (m)
-  gap_min_m: 2.0
+  gap_min_m: 2.5
   # R5 Backline: 적이 자기 진영에 이 깊이 이상 침투 시 후퇴 (m)
-  backline_depth_m: 1.5
+  backline_depth_m: 2.0
   # R2 Coverage: 팀 y축 분산이 이 미만이면 커버 권고 (m)
-  coverage_spread_min_m: 0.8
+  coverage_spread_min_m: 1.5
