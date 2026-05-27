@@ -20,3 +20,6 @@ data/*.png
 # YOLO 모델 (대용량 바이너리)
 models/
 *.pt
+
+# Claude Code
+.claude/
