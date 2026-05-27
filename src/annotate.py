@@ -25,6 +25,38 @@ from typing import List, Optional, Tuple
 
 import cv2
 import numpy as np
+from PIL import Image, ImageDraw, ImageFont
+
+# ── 한글 폰트 (macOS / Linux 자동 선택) ──────────────────────
+def _find_korean_font() -> Optional[str]:
+    candidates = [
+        "/System/Library/Fonts/Supplemental/AppleGothic.ttf",   # macOS
+        "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",       # Ubuntu
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+    ]
+    for p in candidates:
+        if Path(p).exists():
+            return p
+    return None
+
+_KOREAN_FONT_PATH = _find_korean_font()
+_font_cache: dict[int, ImageFont.FreeTypeFont] = {}
+
+def _kr_font(size: int) -> ImageFont.FreeTypeFont:
+    if size not in _font_cache:
+        if _KOREAN_FONT_PATH:
+            _font_cache[size] = ImageFont.truetype(_KOREAN_FONT_PATH, size)
+        else:
+            _font_cache[size] = ImageFont.load_default()
+    return _font_cache[size]
+
+def put_text_kr(img: np.ndarray, text: str, xy: Tuple[int,int],
+                size: int, color: Tuple[int,int,int]) -> None:
+    """한글을 포함한 텍스트를 img에 in-place로 렌더링 (BGR)."""
+    pil = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+    ImageDraw.Draw(pil).text(xy, text, font=_kr_font(size),
+                             fill=(color[2], color[1], color[0]))
+    img[:] = cv2.cvtColor(np.array(pil), cv2.COLOR_RGB2BGR)
 
 # ── 코트 상수 ──────────────────────────────────────────────
 COURT_W_M = 6.0
@@ -142,27 +174,27 @@ def _draw_status(canvas: np.ndarray, state: dict):
     y0 = CH
     canvas[y0:, :] = STATUS_BG
 
-    player_id  = state["player_id"]
-    context    = state["context"] or "없음"
-    arrows     = state["arrows"]
-    hover_m    = state["hover_m"]
-    pt_from    = state["pt_from"]
-    mode       = state["mode"]
+    player_id = state["player_id"]
+    context   = state["context"] or "없음"
+    arrows    = state["arrows"]
+    hover_m   = state["hover_m"]
+    pt_from   = state["pt_from"]
+    mode      = state["mode"]
 
     color   = PLAYER_COLORS.get(player_id, (200, 200, 200))
     team    = "A" if player_id <= 3 else "B"
     role_ko = ROLE_KO.get(state.get("role", ""), "미지정")
 
+    state_str = ("출발점 지정 중" if mode == "from"
+                 else f"도착점 지정 중 (출발: {pt_from})")
     lines = [
-        f"선수: {player_id}  팀: {team}  포지션: {role_ko}  컨텍스트: {context}  저장: {len(arrows)}개",
-        f"마우스: ({hover_m[0]:.2f}, {hover_m[1]:.2f}) m",
-        f"상태: {'출발점 지정 중' if mode == 'from' else '도착점 지정 중 (출발: ' + str(pt_from) + ')'}",
-        "키: [1-6]선수  [q]메인공격수 [w]테크니션 [e]디펜더  [a/d/t]컨텍스트  [u]취소  [s]저장  [ESC]종료",
+        (f"선수: {player_id}  팀: {team}  포지션: {role_ko}  컨텍스트: {context}  저장: {len(arrows)}개", color),
+        (f"마우스: ({hover_m[0]:.2f}, {hover_m[1]:.2f}) m", LINE_C),
+        (f"상태: {state_str}", LINE_C),
+        ("키: [1-6]선수  [q]메인공격수 [w]테크니션 [e]디펜더  [a/d/t]컨텍스트  [u]취소  [s]저장  [ESC]종료", LINE_C),
     ]
-    for i, line in enumerate(lines):
-        cv2.putText(canvas, line, (10, y0 + 22 + i * 26),
-                    cv2.FONT_HERSHEY_PLAIN, 1.1,
-                    color if i == 0 else LINE_C, 1, cv2.LINE_AA)
+    for i, (line, clr) in enumerate(lines):
+        put_text_kr(canvas, line, (10, y0 + 8 + i * 28), 16, clr)
 
 
 # ── 메인 루프 ────────────────────────────────────────────────
