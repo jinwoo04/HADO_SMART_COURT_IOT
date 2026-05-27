@@ -38,6 +38,9 @@ case "$CMD" in
     demo)
         python -m src.demo "${@:2}"
         ;;
+    annotate|ann)
+        python -m src.annotate "${@:2}"
+        ;;
     test)
         python -m tests.test_homography
         python -m tests.test_detector
@@ -49,7 +52,7 @@ case "$CMD" in
         python -m src.homography
         ;;
     *)
-        echo "사용법: ./run.sh [main|calibrate|bench|detect|test|demo]"
+        echo "사용법: ./run.sh [main|calibrate|bench|detect|test|demo|annotate]"
         exit 1
         ;;
 esac

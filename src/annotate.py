@@ -1,0 +1,282 @@
+"""움직임 어노테이션 도구.
+
+코트 버드아이 뷰에서 클릭으로 화살표를 그려 이상적인 이동 경로를 정의.
+저장된 데이터는 data/movement_data.csv에 누적되며 MovementModel 학습에 사용.
+
+조작법
+------
+좌클릭 1회  : 출발점 지정 (초록 원)
+좌클릭 2회  : 도착점 지정 → 화살표 저장
+우클릭      : 현재 출발점 취소
+u           : 마지막 화살표 실행 취소
+1~6         : 선수 번호 선택 (1-3=팀A, 4-6=팀B)
+a / d / t   : 컨텍스트  (a=공격 / d=수비 / t=전환)
+s           : CSV 저장 (자동 누적)
+ESC         : 저장 후 종료
+"""
+from __future__ import annotations
+
+import csv
+import time
+from dataclasses import dataclass
+from pathlib import Path
+from typing import List, Optional, Tuple
+
+import cv2
+import numpy as np
+
+# ── 코트 상수 ──────────────────────────────────────────────
+COURT_W_M = 6.0
+COURT_H_M = 2.66
+PX_PER_M  = 160          # 960 × 426 px
+
+CW = int(COURT_W_M * PX_PER_M)   # 960
+CH = int(COURT_H_M * PX_PER_M)   # 426
+STATUS_H = 130
+WIN_W, WIN_H = CW, CH + STATUS_H
+
+# ── 색상 (BGR) ─────────────────────────────────────────────
+BG_C      = (30,  40,  25)
+LINE_C    = (220, 220, 220)
+GRID_C    = (55,  65,  50)
+CENTER_C  = (160, 160,  50)
+FROM_C    = (60,  255,  60)   # 출발점 — 밝은 초록
+PENDING_C = (80,  200, 255)   # 확인 대기 중
+STATUS_BG = (20,  28,  18)
+
+# 선수별 색상 (1-3=팀A 주황 계열, 4-6=팀B 파랑 계열)
+PLAYER_COLORS: dict[int, tuple[int, int, int]] = {
+    1: (0,  110, 255),
+    2: (0,  170, 220),
+    3: (0,  200, 160),
+    4: (255, 100,  0),
+    5: (220, 150,  0),
+    6: (180, 200,  0),
+}
+
+CONTEXT_MAP = {"a": "attack", "d": "defend", "t": "transition", "n": ""}
+OUTPUT_CSV = Path(__file__).resolve().parent.parent / "data" / "movement_data.csv"
+CSV_HEADER = ["player_id", "team", "from_x", "from_y", "to_x", "to_y", "context", "timestamp"]
+
+
+# ── 데이터 ─────────────────────────────────────────────────
+@dataclass
+class Arrow:
+    player_id: int
+    from_m:   Tuple[float, float]
+    to_m:     Tuple[float, float]
+    context:  str = ""
+
+    @property
+    def team(self) -> str:
+        return "A" if self.player_id <= 3 else "B"
+
+
+# ── 좌표 변환 ───────────────────────────────────────────────
+def px_to_m(px: int, py: int) -> Tuple[float, float]:
+    return round(px / PX_PER_M, 3), round(py / PX_PER_M, 3)
+
+
+def m_to_px(mx: float, my: float) -> Tuple[int, int]:
+    return int(mx * PX_PER_M), int(my * PX_PER_M)
+
+
+# ── 코트 이미지 생성 ────────────────────────────────────────
+def _make_court() -> np.ndarray:
+    img = np.full((CH, CW, 3), BG_C, dtype=np.uint8)
+
+    # 1m 그리드
+    for xm in range(1, int(COURT_W_M)):
+        xp = int(xm * PX_PER_M)
+        cv2.line(img, (xp, 0), (xp, CH), GRID_C, 1, cv2.LINE_AA)
+    for ym in range(1, int(COURT_H_M) + 1):
+        yp = int(ym * PX_PER_M)
+        if yp < CH:
+            cv2.line(img, (0, yp), (CW, yp), GRID_C, 1, cv2.LINE_AA)
+
+    # 중앙선
+    cv2.line(img, (CW // 2, 0), (CW // 2, CH), CENTER_C, 2, cv2.LINE_AA)
+
+    # 외곽선
+    cv2.rectangle(img, (2, 2), (CW - 3, CH - 3), LINE_C, 2)
+
+    # 좌표 레이블 (0, 1, 2, ..., 6 m)
+    for xm in range(0, int(COURT_W_M) + 1):
+        xp = int(xm * PX_PER_M)
+        cv2.putText(img, f"{xm}m", (max(2, xp - 10), 14),
+                    cv2.FONT_HERSHEY_PLAIN, 0.75, GRID_C, 1, cv2.LINE_AA)
+    for ym in range(0, int(COURT_H_M) + 1):
+        yp = int(ym * PX_PER_M)
+        if yp < CH:
+            cv2.putText(img, f"{ym}m", (3, min(CH - 4, yp + 12)),
+                        cv2.FONT_HERSHEY_PLAIN, 0.75, GRID_C, 1, cv2.LINE_AA)
+
+    # 팀 구역 레이블
+    cv2.putText(img, "Team A", (20, CH - 12),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 160, 255), 1, cv2.LINE_AA)
+    cv2.putText(img, "Team B", (CW - 100, CH - 12),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 140, 0), 1, cv2.LINE_AA)
+    return img
+
+
+def _draw_arrow(img: np.ndarray, arrow: Arrow):
+    fx, fy = m_to_px(*arrow.from_m)
+    tx, ty = m_to_px(*arrow.to_m)
+    color = PLAYER_COLORS.get(arrow.player_id, (200, 200, 200))
+    cv2.arrowedLine(img, (fx, fy), (tx, ty), color, 2, cv2.LINE_AA, tipLength=0.25)
+    cv2.circle(img, (fx, fy), 6, color, -1, cv2.LINE_AA)
+    cv2.putText(img, str(arrow.player_id), (fx + 7, fy - 5),
+                cv2.FONT_HERSHEY_PLAIN, 1.0, color, 1, cv2.LINE_AA)
+
+
+# ── 상태 패널 ───────────────────────────────────────────────
+def _draw_status(canvas: np.ndarray, state: dict):
+    y0 = CH
+    canvas[y0:, :] = STATUS_BG
+
+    player_id  = state["player_id"]
+    context    = state["context"] or "없음"
+    arrows     = state["arrows"]
+    hover_m    = state["hover_m"]
+    pt_from    = state["pt_from"]
+    mode       = state["mode"]
+
+    color = PLAYER_COLORS.get(player_id, (200, 200, 200))
+    team  = "A" if player_id <= 3 else "B"
+
+    lines = [
+        f"선수: {player_id}  팀: {team}    컨텍스트: {context}    저장된 화살표: {len(arrows)}",
+        f"마우스: ({hover_m[0]:.2f}, {hover_m[1]:.2f}) m",
+        f"상태: {'출발점 지정 중' if mode == 'from' else '도착점 지정 중 (출발: ' + str(pt_from) + ')'}",
+        "키: [1-6]선수  [a]공격  [d]수비  [t]전환  [u]되돌리기  [s]저장  [ESC]종료",
+    ]
+    for i, line in enumerate(lines):
+        cv2.putText(canvas, line, (10, y0 + 22 + i * 26),
+                    cv2.FONT_HERSHEY_PLAIN, 1.1,
+                    color if i == 0 else LINE_C, 1, cv2.LINE_AA)
+
+
+# ── 메인 루프 ────────────────────────────────────────────────
+def run():
+    court_base = _make_court()
+    arrows: List[Arrow] = []
+
+    state = {
+        "player_id": 1,
+        "context":   "",
+        "mode":      "from",      # "from" | "to"
+        "pt_from":   None,        # (x_m, y_m)
+        "hover_m":   (0.0, 0.0),
+        "arrows":    arrows,
+    }
+
+    def on_mouse(event, x, y, flags, _param):
+        # 마우스가 코트 영역 안에 있을 때만 좌표 갱신
+        if 0 <= y < CH:
+            state["hover_m"] = px_to_m(x, y)
+
+        if event == cv2.EVENT_LBUTTONDOWN and 0 <= y < CH:
+            mx, my = px_to_m(x, y)
+            if state["mode"] == "from":
+                state["pt_from"] = (mx, my)
+                state["mode"]    = "to"
+            else:
+                arrows.append(Arrow(
+                    player_id=state["player_id"],
+                    from_m=state["pt_from"],
+                    to_m=(mx, my),
+                    context=state["context"],
+                ))
+                state["pt_from"] = None
+                state["mode"]    = "from"
+
+        elif event == cv2.EVENT_RBUTTONDOWN:
+            # 우클릭 → 현재 출발점 취소
+            state["pt_from"] = None
+            state["mode"]    = "from"
+
+    win_name = "HADO 움직임 어노테이션"
+    cv2.namedWindow(win_name, cv2.WINDOW_AUTOSIZE)
+    cv2.setMouseCallback(win_name, on_mouse)
+
+    print("\n[Annotate] 시작 — 코트 창에서 클릭하여 화살표를 그리세요.")
+    print(f"[Annotate] 저장 경로: {OUTPUT_CSV}\n")
+
+    while True:
+        canvas = np.zeros((WIN_H, WIN_W, 3), dtype=np.uint8)
+        court  = court_base.copy()
+
+        # 저장된 화살표 모두 그리기
+        for arr in arrows:
+            _draw_arrow(court, arr)
+
+        # 출발점 대기 중인 점
+        if state["pt_from"]:
+            fx, fy = m_to_px(*state["pt_from"])
+            cv2.circle(court, (fx, fy), 8, FROM_C, -1, cv2.LINE_AA)
+            cv2.circle(court, (fx, fy), 8, LINE_C,  1, cv2.LINE_AA)
+
+            # 출발점 → 마우스까지 미리보기 선
+            mx, my = m_to_px(*state["hover_m"])
+            cv2.line(court, (fx, fy), (mx, my), PENDING_C, 1, cv2.LINE_AA)
+
+        # 마우스 십자선
+        hx, hy = m_to_px(*state["hover_m"])
+        if 0 <= hx < CW and 0 <= hy < CH:
+            cv2.line(court, (hx, 0), (hx, CH), (80, 80, 80), 1)
+            cv2.line(court, (0, hy), (CW, hy), (80, 80, 80), 1)
+
+        canvas[:CH, :CW] = court
+        _draw_status(canvas, state)
+        cv2.imshow(win_name, canvas)
+
+        key = cv2.waitKey(20) & 0xFF
+        if key == 27:  # ESC
+            _save_csv(arrows)
+            break
+        elif key == ord('s'):
+            _save_csv(arrows)
+        elif key == ord('u'):
+            if state["mode"] == "to":
+                state["pt_from"] = None
+                state["mode"]    = "from"
+            elif arrows:
+                arrows.pop()
+                print(f"[Annotate] 마지막 화살표 취소 (남은: {len(arrows)}개)")
+        elif chr(key) in "123456":
+            state["player_id"] = int(chr(key))
+            print(f"[Annotate] 선수 {state['player_id']} 선택")
+        elif chr(key) in CONTEXT_MAP:
+            state["context"] = CONTEXT_MAP[chr(key)]
+            print(f"[Annotate] 컨텍스트: '{state['context'] or '없음'}'")
+
+    cv2.destroyAllWindows()
+
+
+def _save_csv(arrows: List[Arrow]):
+    if not arrows:
+        print("[Annotate] 저장할 데이터 없음")
+        return
+    OUTPUT_CSV.parent.mkdir(parents=True, exist_ok=True)
+    exists = OUTPUT_CSV.exists()
+    with open(OUTPUT_CSV, "a", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        if not exists:
+            writer.writerow(CSV_HEADER)
+        ts = time.strftime("%Y-%m-%d %H:%M:%S")
+        for arr in arrows:
+            writer.writerow([
+                arr.player_id, arr.team,
+                arr.from_m[0], arr.from_m[1],
+                arr.to_m[0],   arr.to_m[1],
+                arr.context,   ts,
+            ])
+    print(f"[Annotate] {len(arrows)}개 화살표 → {OUTPUT_CSV}")
+
+
+def main():
+    run()
+
+
+if __name__ == "__main__":
+    main()
