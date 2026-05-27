@@ -60,7 +60,8 @@ ROLE_MAP    = {"q": "main_attacker", "w": "technician", "e": "defender", "r": ""
 ROLE_KO     = {"main_attacker": "메인공격수", "technician": "테크니션",
                "defender": "디펜더", "": "미지정"}
 OUTPUT_CSV = Path(__file__).resolve().parent.parent / "data" / "movement_data.csv"
-CSV_HEADER = ["player_id", "team", "role", "from_x", "from_y", "to_x", "to_y", "context", "timestamp"]
+CSV_HEADER = ["pattern_id", "step", "player_id", "team", "role",
+              "from_x", "from_y", "to_x", "to_y", "context", "timestamp"]
 
 
 # ── 데이터 ─────────────────────────────────────────────────
@@ -272,27 +273,58 @@ def run():
     cv2.destroyAllWindows()
 
 
+def _next_pattern_id() -> int:
+    """CSV에 저장된 마지막 pattern_id + 1을 반환."""
+    if not OUTPUT_CSV.exists():
+        return 1
+    max_id = 0
+    with open(OUTPUT_CSV, newline="", encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            try:
+                max_id = max(max_id, int(row["pattern_id"]))
+            except (KeyError, ValueError):
+                pass
+    return max_id + 1
+
+
 def _save_csv(arrows: List[Arrow], state: dict):
     new_arrows = arrows[state["saved_count"]:]
     if not new_arrows:
         print("[Annotate] 새로 저장할 데이터 없음")
         return
+
     OUTPUT_CSV.parent.mkdir(parents=True, exist_ok=True)
     exists = OUTPUT_CSV.exists()
+    ts = time.strftime("%Y-%m-%d %H:%M:%S")
+
+    # 선수별로 묶어 각각 하나의 패턴으로 저장
+    from collections import defaultdict
+    by_player: dict[int, list[Arrow]] = defaultdict(list)
+    for arr in new_arrows:
+        by_player[arr.player_id].append(arr)
+
+    next_id = _next_pattern_id()
+    rows_written = 0
     with open(OUTPUT_CSV, "a", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         if not exists:
             writer.writerow(CSV_HEADER)
-        ts = time.strftime("%Y-%m-%d %H:%M:%S")
-        for arr in new_arrows:
-            writer.writerow([
-                arr.player_id, arr.team, arr.role,
-                arr.from_m[0], arr.from_m[1],
-                arr.to_m[0],   arr.to_m[1],
-                arr.context,   ts,
-            ])
+        for pid in sorted(by_player.keys()):
+            pattern_arrows = by_player[pid]
+            for step, arr in enumerate(pattern_arrows, start=1):
+                writer.writerow([
+                    next_id, step,
+                    arr.player_id, arr.team, arr.role,
+                    arr.from_m[0], arr.from_m[1],
+                    arr.to_m[0],   arr.to_m[1],
+                    arr.context,   ts,
+                ])
+            print(f"[Annotate] 패턴{next_id} | 선수{pid}({arr.role}) | {len(pattern_arrows)}개 동작")
+            next_id += 1
+            rows_written += len(pattern_arrows)
+
     state["saved_count"] = len(arrows)
-    print(f"[Annotate] {len(new_arrows)}개 저장 (누적 {len(arrows)}개) → {OUTPUT_CSV}")
+    print(f"[Annotate] 총 {rows_written}개 행 저장 → {OUTPUT_CSV}")
 
 
 def main():
