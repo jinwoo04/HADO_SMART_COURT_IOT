@@ -40,10 +40,12 @@ case "$CMD" in
         ;;
     test)
         python -m tests.test_homography
+        python -m tests.test_detector
+        python -m tests.test_tracker
+        python -m tests.test_camera
         python -m tests.test_visualizer
         python -m tests.test_tactic_engine
         python -m tests.test_guide
-        python -m src.tracker
         python -m src.homography
         ;;
     *)
