@@ -34,6 +34,7 @@ def _engine() -> TacticEngine:
         court_height_m=2.66,
         spacing_min_m=1.0,
         counter_range_m=2.5,
+        counter_y_offset_m=1.0,
         gap_min_m=2.0,
         backline_depth_m=1.5,
     )
@@ -343,15 +344,15 @@ def test_r3_no_fire_when_far():
 
 
 def test_r3_no_fire_when_off_axis():
-    """적이 가깝지만 y축 오프셋 > 0.6 → R3 미발화."""
+    """적이 가깝지만 y축 오프셋 > 1.0 → R3 미발화."""
     e = _engine()
     players = [
         _ps(1, 2.0, 1.0),
-        _ps(2, 3.5, 1.7),   # dist≈1.55 < 2.5 but |dy|=0.7 > 0.6
+        _ps(2, 3.5, 2.2),   # dist≈1.92 < 2.5 but |dy|=1.2 > 1.0
     ]
     advices = {a.track_id: a for a in e.analyze(players)}
     assert advices[1].rule != "R3"
-    print("  ✓ R3 미발화: y오프셋 0.7 > 0.6")
+    print("  ✓ R3 미발화: y오프셋 1.2 > 1.0")
 
 
 # ── R4: Gap Attack ────────────────────────────────────────────────────────────

@@ -125,12 +125,12 @@ class TacticEngine:
         self,
         court_width_m: float = 10.0,
         court_height_m: float = 6.0,
-        spacing_min_m: float = 1.0,
-        counter_range_m: float = 2.5,
-        counter_y_offset_m: float = 0.6,
-        gap_min_m: float = 2.0,
-        backline_depth_m: float = 1.5,
-        coverage_spread_min_m: float = 0.8,
+        spacing_min_m: float = 1.5,
+        counter_range_m: float = 3.0,
+        counter_y_offset_m: float = 1.0,
+        gap_min_m: float = 2.5,
+        backline_depth_m: float = 2.0,
+        coverage_spread_min_m: float = 1.5,
         movement_model=None,    # MovementModel | None (순환 import 방지로 타입 미지정)
     ):
         self.court_width = court_width_m
@@ -143,6 +143,23 @@ class TacticEngine:
         self.coverage_spread_min = coverage_spread_min_m
         self._movement_model = movement_model
         self._team_assignment: Dict[int, str] = {}
+
+    @classmethod
+    def from_config(cls, config: dict, movement_model=None) -> "TacticEngine":
+        """court_config.yaml 딕셔너리에서 파라미터를 읽어 인스턴스 생성."""
+        court = config.get("court", {})
+        tc    = config.get("tactic", {})
+        return cls(
+            court_width_m         = court.get("width_m",               10.0),
+            court_height_m        = court.get("height_m",               6.0),
+            spacing_min_m         = tc.get("spacing_min_m",             1.5),
+            counter_range_m       = tc.get("counter_range_m",           3.0),
+            counter_y_offset_m    = tc.get("counter_y_offset_m",        1.0),
+            gap_min_m             = tc.get("gap_min_m",                 2.5),
+            backline_depth_m      = tc.get("backline_depth_m",          2.0),
+            coverage_spread_min_m = tc.get("coverage_spread_min_m",     1.5),
+            movement_model        = movement_model,
+        )
 
     # ----- 팀 배정 -----
     def assign_team(self, track_id: int, court_x: float):

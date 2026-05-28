@@ -32,10 +32,19 @@ from src.visualizer import (
     render_court_birdeye,
 )
 
+import yaml
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 _COURT_W = 10.0
 _COURT_H = 6.0
 _FRAME_W, _FRAME_H = 1280, 720
+
+_CONFIG_PATH = PROJECT_ROOT / "config" / "court_config.yaml"
+
+
+def _load_config() -> dict:
+    with open(_CONFIG_PATH, encoding="utf-8") as f:
+        return yaml.safe_load(f)
 
 
 def _make_calib():
@@ -122,6 +131,7 @@ def _court_to_bbox(xm: float, ym: float, calib) -> np.ndarray:
 
 
 def run(args) -> int:
+    config = _load_config()
     calib = _make_calib()
     bg = _build_camera_bg(calib)
     px_per_m = 100
@@ -131,11 +141,7 @@ def run(args) -> int:
     # Level 2: TacticEngine + MovementModel
     mv_csv = PROJECT_ROOT / "data" / "movement_data.csv"
     movement_model = MovementModel(mv_csv) if mv_csv.exists() else None
-    tactic_engine = TacticEngine(
-        court_width_m=_COURT_W,
-        court_height_m=_COURT_H,
-        movement_model=movement_model,
-    )
+    tactic_engine = TacticEngine.from_config(config, movement_model=movement_model)
     if movement_model:
         print(f"[Demo] MovementModel: {movement_model.pattern_count}패턴 로드")
     # 팀 배정 고정 (track_id 1~3=A, 4~6=B)

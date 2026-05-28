@@ -117,23 +117,12 @@ def run(args):
         iou_threshold=config["tracker"]["iou_threshold"],
         max_lost_frames=config["tracker"]["max_lost_frames"],
     )
-    tc = config.get("tactic", {})
     if args.level >= 2:
         mv_csv = PROJECT_ROOT / "data" / "movement_data.csv"
         movement_model = MovementModel(mv_csv) if mv_csv.exists() else None
         if movement_model:
             print(f"[Main] MovementModel 로드: {movement_model.pattern_count}개 패턴")
-        tactic_engine = TacticEngine(
-            court_width_m=calib.court_width_m,
-            court_height_m=calib.court_height_m,
-            spacing_min_m=tc.get("spacing_min_m", 1.0),
-            counter_range_m=tc.get("counter_range_m", 2.5),
-            counter_y_offset_m=tc.get("counter_y_offset_m", 0.6),
-            gap_min_m=tc.get("gap_min_m", 2.0),
-            backline_depth_m=tc.get("backline_depth_m", 1.5),
-            coverage_spread_min_m=tc.get("coverage_spread_min_m", 0.8),
-            movement_model=movement_model,
-        )
+        tactic_engine = TacticEngine.from_config(config, movement_model=movement_model)
     else:
         tactic_engine = None
     voice_guide = VoiceGuide(enabled=args.voice) if (args.level >= 2 and args.voice) else None
