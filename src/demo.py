@@ -19,7 +19,10 @@ import cv2
 import numpy as np
 
 from src.detector import Detection
+from src.guide import draw_guide_on_birdeye
 from src.homography import compute_homography, court_to_pixel
+from src.movement_model import MovementModel
+from src.tactic_engine import PlayerState, TacticEngine
 from src.tracker import IoUTracker
 from src.visualizer import (
     combine_views,
@@ -52,22 +55,31 @@ def _make_calib():
 
 # (base_x, base_y, amp_x, amp_y, freq_x, freq_y, phase)
 _PLAYER_PARAMS = [
-    (2.0, 1.5, 1.2, 1.0, 0.80, 1.10, 0.0),   # #1 Team A (technician)
-    (1.5, 4.0, 1.0, 1.2, 1.20, 0.70, 1.5),   # #2 Team A (defender)
-    (3.5, 3.0, 1.0, 1.5, 0.90, 1.30, 0.8),   # #3 Team A (main attacker)
-    (8.0, 1.5, 1.2, 1.0, 0.80, 1.10, 1.6),   # #4 Team B
-    (8.5, 4.0, 1.0, 1.2, 1.20, 0.70, 2.8),   # #5 Team B
-    (6.5, 3.0, 1.0, 1.5, 0.90, 1.30, 3.5),   # #6 Team B
+    (2.0, 1.5, 1.2, 1.0, 0.80, 1.10, 0.0),   # #1 Team A technician
+    (1.5, 4.0, 1.0, 1.2, 1.20, 0.70, 1.5),   # #2 Team A defender
+    (3.5, 3.0, 1.0, 1.5, 0.90, 1.30, 0.8),   # #3 Team A main_attacker
+    (8.0, 1.5, 1.2, 1.0, 0.80, 1.10, 1.6),   # #4 Team B main_attacker
+    (8.5, 4.0, 1.0, 1.2, 1.20, 0.70, 2.8),   # #5 Team B defender
+    (6.5, 3.0, 1.0, 1.5, 0.90, 1.30, 3.5),   # #6 Team B technician
 ]
+_PLAYER_ROLES = {
+    1: "technician", 2: "defender",    3: "main_attacker",
+    4: "main_attacker", 5: "defender", 6: "technician",
+}
 
 
 def _player_pos(frame_idx: int, pid: int) -> tuple[float, float]:
-    """선수 ID(1~4)별 시뮬레이션 위치 (코트 좌표 m)."""
+    """선수 ID(1~6)별 시뮬레이션 위치 (코트 좌표 m). 진영 불가침 적용."""
     t = frame_idx / 30.0
-    bx, by, ax, ay, wx, wy, ph = _PLAYER_PARAMS[(pid - 1) % 4]
+    bx, by, ax, ay, wx, wy, ph = _PLAYER_PARAMS[pid - 1]
     x = bx + ax * math.sin(wx * t + ph)
     y = by + ay * math.cos(wy * t + ph * 1.3)
-    return max(0.05, min(_COURT_W - 0.05, x)), max(0.05, min(_COURT_H - 0.05, y))
+    # 진영 불가침: 1~3=팀A(x<5), 4~6=팀B(x>5)
+    if pid <= 3:
+        x = max(0.05, min(4.95, x))
+    else:
+        x = max(5.05, min(_COURT_W - 0.05, x))
+    return x, max(0.05, min(_COURT_H - 0.05, y))
 
 
 def _build_camera_bg(calib) -> np.ndarray:
@@ -116,6 +128,22 @@ def run(args) -> int:
     court_tmpl = render_court_birdeye(calib, px_per_m=px_per_m)
     tracker = IoUTracker(iou_threshold=0.3, max_lost_frames=10)
 
+    # Level 2: TacticEngine + MovementModel
+    mv_csv = PROJECT_ROOT / "data" / "movement_data.csv"
+    movement_model = MovementModel(mv_csv) if mv_csv.exists() else None
+    tactic_engine = TacticEngine(
+        court_width_m=_COURT_W,
+        court_height_m=_COURT_H,
+        movement_model=movement_model,
+    )
+    if movement_model:
+        print(f"[Demo] MovementModel: {movement_model.pattern_count}패턴 로드")
+    # 팀 배정 고정 (track_id 1~3=A, 4~6=B)
+    for tid in range(1, 4):
+        tactic_engine._team_assignment[tid] = "A"
+    for tid in range(4, 7):
+        tactic_engine._team_assignment[tid] = "B"
+
     out_dir = PROJECT_ROOT / "data"
     out_dir.mkdir(exist_ok=True)
     vid_path = out_dir / "demo.mp4"
@@ -136,11 +164,23 @@ def run(args) -> int:
                 x1=float(bbox[0]), y1=float(bbox[1]), x2=float(bbox[2]), y2=float(bbox[3]),
                 confidence=0.90,
             )
-            for pid in range(1, 5)
+            for pid in range(1, 7)
             for bbox in [_court_to_bbox(*_player_pos(fi, pid), calib)]
         ]
 
         tracks = tracker.update(dets)
+
+        # Level 2: 전술 분석 (데모에서는 시뮬레이션 좌표를 그대로 사용)
+        player_states = [
+            PlayerState(
+                track_id=t.track_id,
+                court_x=_player_pos(fi, t.track_id)[0],
+                court_y=_player_pos(fi, t.track_id)[1],
+                role=_PLAYER_ROLES.get(t.track_id, ""),
+            )
+            for t in tracks
+        ]
+        advices = tactic_engine.analyze(player_states)
 
         cam_view = bg.copy()
         draw_detections_on_frame(cam_view, tracks)
@@ -151,6 +191,7 @@ def run(args) -> int:
             show_trajectory=True,
             trajectory_length=45,
         )
+        birdeye = draw_guide_on_birdeye(birdeye, advices, px_per_m=px_per_m)
 
         combined = combine_views(cam_view, birdeye)
         draw_hud(combined, fps=30.0, n_players=len(tracks))
