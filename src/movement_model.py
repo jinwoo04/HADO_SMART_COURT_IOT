@@ -43,6 +43,7 @@ class _Pattern:
     team:       str
     role:       str
     context:    str
+    intent:     str = ""
     steps:      List[_Step] = field(default_factory=list)
 
     def closest_step_idx(self, pos: Tuple[float, float]) -> Tuple[int, float]:
@@ -60,10 +61,11 @@ class _Pattern:
 @dataclass
 class MovementPrediction:
     """predict() 반환값."""
-    target_pos:        Tuple[float, float]   # 즉시 이동 목표 (1스텝)
+    target_pos:        Tuple[float, float]        # 즉시 이동 목표 (1스텝)
     full_path:         List[Tuple[float, float]]  # 매칭 패턴의 남은 경로
-    confidence:        float                 # 0.0~1.0 (거리 기반)
-    matched_pattern_id: int                  # 디버깅용
+    confidence:        float                      # 0.0~1.0 (거리 기반)
+    matched_pattern_id: int                       # 디버깅용
+    intent:            str = ""                   # 매칭된 패턴의 의도
 
 
 # ---------- 헬퍼 ----------
@@ -120,6 +122,7 @@ class MovementModel:
                         team=row["team"],
                         role=row["role"],
                         context=row["context"],
+                        intent=row.get("intent", ""),
                     )
                 # step 순서가 뒤섞여 있을 수 있으므로 인덱스로 삽입
                 p = raw[pid]
@@ -146,6 +149,7 @@ class MovementModel:
         role:    str,
         context: str,
         team:    str,
+        intent:  str = "",
     ) -> Optional[MovementPrediction]:
         """현재 위치·포지션·상황을 받아 다음 목표 위치를 반환.
 
@@ -155,12 +159,18 @@ class MovementModel:
         role    : "technician" | "defender" | "main_attacker"
         context : "attack" | "defend" | "transition"
         team    : "A" | "B"
+        intent  : 선택적. 지정 시 해당 의도 패턴만 후보로 사용.
 
         Returns
         -------
         MovementPrediction or None (매칭 패턴 없음)
         """
         candidates = self._index.get((role, context), [])
+        # intent 지정 시 해당 의도 패턴 우선 사용 (없으면 전체로 fallback)
+        if intent:
+            intent_filtered = [p for p in candidates if p.intent == intent]
+            if intent_filtered:
+                candidates = intent_filtered
         if not candidates:
             return None
 
@@ -198,6 +208,7 @@ class MovementModel:
             full_path=remaining,
             confidence=round(confidence, 3),
             matched_pattern_id=best_pat.pattern_id,
+            intent=best_pat.intent,
         )
 
     def coverage(self) -> Dict[Tuple[str, str], int]:

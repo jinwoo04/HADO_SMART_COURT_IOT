@@ -12,6 +12,7 @@ u           : 마지막 화살표 실행 취소
 1~6         : 선수 번호 선택 (1-3=팀A, 4-6=팀B)
 q / w / e   : 포지션 (q=메인공격수 / w=테크니션 / e=디펜더)
 a / d / t   : 컨텍스트  (a=공격 / d=수비 / t=전환)
+z/x/c/v     : 의도 (포지션별 4가지 — 상태 패널 참고)
 s           : CSV 저장 (자동 누적)
 ESC         : 저장 후 종료
 """
@@ -65,7 +66,7 @@ PX_PER_M  = 80           # 800 × 480 px
 
 CW = int(COURT_W_M * PX_PER_M)   # 800
 CH = int(COURT_H_M * PX_PER_M)   # 480
-STATUS_H = 130
+STATUS_H = 140
 WIN_W, WIN_H = CW, CH + STATUS_H
 
 # ── 색상 (BGR) ─────────────────────────────────────────────
@@ -91,10 +92,36 @@ CONTEXT_MAP = {"a": "attack", "d": "defend", "t": "transition", "n": ""}
 ROLE_MAP    = {"q": "main_attacker", "w": "technician", "e": "defender", "r": ""}
 ROLE_KO     = {"main_attacker": "메인공격수", "technician": "테크니션",
                "defender": "디펜더", "": "미지정"}
+
+# z/x/c/v → intent (포지션별)
+INTENT_MAP: dict[str, dict[str, str]] = {
+    "main_attacker": {"z": "direct_attack", "x": "feint_attack",
+                      "c": "cross_court",   "v": "gap_exploit"},
+    "technician":    {"z": "lure_attention","x": "create_space",
+                      "c": "bait_inward",   "v": "support_fire"},
+    "defender":      {"z": "shield_protect","x": "shield_attack_support",
+                      "c": "shield_feint",  "v": "counter_shield"},
+}
+INTENT_KO: dict[str, str] = {
+    "direct_attack":          "직접공격",
+    "feint_attack":           "페인트공격",
+    "cross_court":            "코트가로지르기",
+    "gap_exploit":            "공간공략",
+    "lure_attention":         "시선유도",
+    "create_space":           "공간창출",
+    "bait_inward":            "안쪽유도",
+    "support_fire":           "공격지원",
+    "shield_protect":         "수비쉴드",
+    "shield_attack_support":  "공격지원쉴드",
+    "shield_feint":           "쉴드페인트",
+    "counter_shield":         "맞쉴드",
+    "":                       "미지정",
+}
+
 OUTPUT_CSV      = Path(__file__).resolve().parent.parent / "data" / "movement_data.csv"
 SNAPSHOT_DIR    = Path(__file__).resolve().parent.parent / "data" / "pattern_snapshots"
 CSV_HEADER = ["pattern_id", "step", "player_id", "team", "role",
-              "from_x", "from_y", "to_x", "to_y", "context", "timestamp"]
+              "from_x", "from_y", "to_x", "to_y", "context", "intent", "timestamp"]
 
 
 # ── 데이터 ─────────────────────────────────────────────────
@@ -105,6 +132,7 @@ class Arrow:
     to_m:     Tuple[float, float]
     role:     str = ""
     context:  str = ""
+    intent:   str = ""
 
     @property
     def team(self) -> str:
@@ -210,18 +238,29 @@ def _draw_status(canvas: np.ndarray, state: dict):
     hover_m   = state["hover_m"]
     pt_from   = state["pt_from"]
     mode      = state["mode"]
+    role      = state.get("role", "")
+    intent    = state.get("intent", "")
 
-    color   = PLAYER_COLORS.get(player_id, (200, 200, 200))
-    team    = "A" if player_id <= 3 else "B"
-    role_ko = ROLE_KO.get(state.get("role", ""), "미지정")
+    color    = PLAYER_COLORS.get(player_id, (200, 200, 200))
+    team     = "A" if player_id <= 3 else "B"
+    role_ko  = ROLE_KO.get(role, "미지정")
+    intent_ko = INTENT_KO.get(intent, "미지정")
+
+    # 포지션별 의도 힌트 한 줄 (z/x/c/v)
+    role_intents = INTENT_MAP.get(role, {})
+    if role_intents:
+        hint_parts = [f"[{k}]{INTENT_KO.get(v,'?')}" for k, v in role_intents.items()]
+        intent_hint = "  ".join(hint_parts)
+    else:
+        intent_hint = "포지션 선택 후 z/x/c/v로 의도 지정"
 
     state_str = ("출발점 지정 중" if mode == "from"
                  else f"도착점 지정 중 (출발: {pt_from})")
     lines = [
-        (f"선수: {player_id}  팀: {team}  포지션: {role_ko}  컨텍스트: {context}  저장: {len(arrows)}개", color),
-        (f"마우스: ({hover_m[0]:.2f}, {hover_m[1]:.2f}) m", LINE_C),
-        (f"상태: {state_str}", LINE_C),
-        ("키: [1-6]선수  [q]메인공격수 [w]테크니션 [e]디펜더  [a/d/t]컨텍스트  [u]취소  [s]저장  [ESC]종료", LINE_C),
+        (f"선수: {player_id}  팀: {team}  포지션: {role_ko}  컨텍스트: {context}  의도: {intent_ko}  저장: {len(arrows)}개", color),
+        (f"의도키: {intent_hint}", (180, 200, 120)),
+        (f"마우스: ({hover_m[0]:.2f}, {hover_m[1]:.2f}) m  |  상태: {state_str}", LINE_C),
+        ("키: [1-6]선수  [q/w/e]포지션  [a/d/t]컨텍스트  [z/x/c/v]의도  [u]취소  [s]저장  [ESC]종료", LINE_C),
     ]
     for i, (line, clr) in enumerate(lines):
         put_text_kr(canvas, line, (10, y0 + 8 + i * 28), 16, clr)
@@ -236,6 +275,7 @@ def run():
         "player_id":   1,
         "role":        "",
         "context":     "",
+        "intent":      "",
         "mode":        "from",      # "from" | "to"
         "pt_from":     None,        # (x_m, y_m)
         "hover_m":     (0.0, 0.0),
@@ -265,6 +305,7 @@ def run():
                     to_m=(mx, my),
                     role=state["role"],
                     context=state["context"],
+                    intent=state["intent"],
                 ))
                 state["pt_from"] = None
                 state["mode"]    = "from"
@@ -325,13 +366,23 @@ def run():
                 print(f"[Annotate] 마지막 화살표 취소 (남은: {len(arrows)}개)")
         elif chr(key) in "123456":
             state["player_id"] = int(chr(key))
+            state["intent"] = ""  # 선수 바뀌면 의도 초기화
             print(f"[Annotate] 선수 {state['player_id']} 선택")
         elif chr(key) in ROLE_MAP:
             state["role"] = ROLE_MAP[chr(key)]
+            state["intent"] = ""  # 포지션 바뀌면 의도 초기화
             print(f"[Annotate] 포지션: '{ROLE_KO[state['role']]}'")
         elif chr(key) in CONTEXT_MAP:
             state["context"] = CONTEXT_MAP[chr(key)]
             print(f"[Annotate] 컨텍스트: '{state['context'] or '없음'}'")
+        elif chr(key) in "zxcv":
+            role_intents = INTENT_MAP.get(state["role"], {})
+            new_intent = role_intents.get(chr(key), "")
+            if new_intent:
+                state["intent"] = new_intent
+                print(f"[Annotate] 의도: '{INTENT_KO[new_intent]}' ({new_intent})")
+            else:
+                print(f"[Annotate] 포지션이 지정되지 않아 의도를 설정할 수 없습니다.")
 
     cv2.destroyAllWindows()
 
@@ -407,7 +458,7 @@ def _save_csv(arrows: List[Arrow], state: dict):
                     arr.player_id, arr.team, arr.role,
                     arr.from_m[0], arr.from_m[1],
                     arr.to_m[0],   arr.to_m[1],
-                    arr.context,   ts,
+                    arr.context,   arr.intent, ts,
                 ])
             print(f"[Annotate] 패턴{next_id} | 선수{pid}({arr.role}) | {len(pattern_arrows)}개 동작")
             next_id += 1
