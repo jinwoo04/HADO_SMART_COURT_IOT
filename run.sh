@@ -49,6 +49,7 @@ case "$CMD" in
         python -m tests.test_visualizer
         python -m tests.test_tactic_engine
         python -m tests.test_guide
+        python -m pytest tests/test_movement_model.py -q
         python -m src.homography
         ;;
     *)

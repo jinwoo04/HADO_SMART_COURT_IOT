@@ -91,7 +91,8 @@ CONTEXT_MAP = {"a": "attack", "d": "defend", "t": "transition", "n": ""}
 ROLE_MAP    = {"q": "main_attacker", "w": "technician", "e": "defender", "r": ""}
 ROLE_KO     = {"main_attacker": "메인공격수", "technician": "테크니션",
                "defender": "디펜더", "": "미지정"}
-OUTPUT_CSV = Path(__file__).resolve().parent.parent / "data" / "movement_data.csv"
+OUTPUT_CSV      = Path(__file__).resolve().parent.parent / "data" / "movement_data.csv"
+SNAPSHOT_DIR    = Path(__file__).resolve().parent.parent / "data" / "pattern_snapshots"
 CSV_HEADER = ["pattern_id", "step", "player_id", "team", "role",
               "from_x", "from_y", "to_x", "to_y", "context", "timestamp"]
 
@@ -311,6 +312,7 @@ def run():
         key = cv2.waitKey(20) & 0xFF
         if key == 27:  # ESC
             _save_csv(arrows, state)
+            _save_snapshot(court_base, arrows)
             break
         elif key == ord('s'):
             _save_csv(arrows, state)
@@ -332,6 +334,33 @@ def run():
             print(f"[Annotate] 컨텍스트: '{state['context'] or '없음'}'")
 
     cv2.destroyAllWindows()
+
+
+def _save_snapshot(court_base: np.ndarray, arrows: List[Arrow]) -> None:
+    """세션에서 그린 화살표를 코트 이미지로 저장."""
+    if not arrows:
+        return
+    SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
+    img = court_base.copy()
+    for arr in arrows:
+        _draw_arrow(img, arr)
+    ts = time.strftime("%Y%m%d_%H%M%S")
+    # 이 세션에 등장한 포지션·컨텍스트 요약
+    roles    = sorted(set(a.role    for a in arrows if a.role))
+    contexts = sorted(set(a.context for a in arrows if a.context))
+    summary  = f"{'_'.join(roles[:2])}__{'_'.join(contexts[:2])}" if roles else "unknown"
+    fname    = SNAPSHOT_DIR / f"session_{ts}_{summary}.png"
+    # 상단 타이틀 바
+    bar = np.full((36, CW, 3), (20, 20, 30), dtype=np.uint8)
+    role_ko = {"main_attacker": "메인공격수", "technician": "테크니션", "defender": "디펜더"}
+    ctx_ko  = {"attack": "공격", "defend": "수비", "transition": "전환"}
+    roles_str = " / ".join(role_ko.get(r, r) for r in roles[:3])
+    ctx_str   = " / ".join(ctx_ko.get(c, c)  for c in contexts[:3])
+    put_text_kr(bar, f"세션 {ts}  |  {roles_str}  |  {ctx_str}  |  화살표 {len(arrows)}개",
+                (8, 8), 16, (200, 200, 200))
+    img = np.vstack([bar, img])
+    cv2.imwrite(str(fname), img)
+    print(f"[Annotate] 스냅샷 저장 → {fname.name}")
 
 
 def _next_pattern_id() -> int:
