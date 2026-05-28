@@ -41,6 +41,9 @@ case "$CMD" in
     annotate|ann)
         python -m src.annotate "${@:2}"
         ;;
+    label)
+        python -m src.label_intents "${@:2}"
+        ;;
     test)
         python -m tests.test_homography
         python -m tests.test_detector
@@ -53,7 +56,7 @@ case "$CMD" in
         python -m src.homography
         ;;
     *)
-        echo "사용법: ./run.sh [main|calibrate|bench|detect|test|demo|annotate]"
+        echo "사용법: ./run.sh [main|calibrate|bench|detect|test|demo|annotate|label]"
         exit 1
         ;;
 esac
