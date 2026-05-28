@@ -20,7 +20,8 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from typing import Dict, List, Tuple
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
 
 
 # ---------- 데이터 클래스 ----------
@@ -31,6 +32,7 @@ class PlayerState:
     court_x: float       # 코트 X 좌표 (m)
     court_y: float       # 코트 Y 좌표 (m)
     confidence: float = 1.0
+    role: str = ""       # "technician" | "defender" | "main_attacker" | "" (미지정)
 
     @property
     def pos(self) -> Tuple[float, float]:
@@ -47,7 +49,8 @@ class TacticAdvice:
     urgency: str                    # "LOW" | "MID" | "HIGH"
     reason: str                     # 화면 텍스트용 한글
     voice_message: str              # 음성 안내용 짧은 한글
-    rule: str                       # 어떤 규칙이 발동했는지 (R1~R5)
+    rule: str                       # 어떤 규칙이 발동했는지 (R1~R5 | ML:패턴ID)
+    ml_confidence: float = 0.0     # MovementModel 기여도 (0=미사용, >0=블렌딩됨)
 
     @property
     def direction_vec(self) -> Tuple[float, float]:
@@ -95,12 +98,28 @@ def _direction_name(dx: float, dy: float) -> str:
         return "오른쪽 앞"
 
 
+def _rule_to_context(rule: str) -> str:
+    """발동된 규칙 → MovementModel context 문자열 변환."""
+    if rule in ("R3", "R5"):
+        return "defend"
+    if rule == "R4":
+        return "attack"
+    if rule in ("R1", "R2"):
+        return "transition"
+    return "attack"   # BASE
+
+
 # ---------- 엔진 ----------
 class TacticEngine:
     """규칙 기반 전술 분석기.
 
     매 프레임 호출 가능. 팀 배정은 첫 등장 시 자동(코트 절반 기준).
     """
+
+    # ML 블렌딩 가중치 상수
+    _ML_WEIGHT_BASE = 0.7   # BASE(규칙 미발동) 시 ML 최대 기여 비율
+    _ML_WEIGHT_MID  = 0.4   # MID urgency 시 ML 최대 기여 비율
+    _ML_CONF_MIN    = 0.5   # 이 신뢰도 미만은 ML 무시
 
     def __init__(
         self,
@@ -112,6 +131,7 @@ class TacticEngine:
         gap_min_m: float = 2.0,
         backline_depth_m: float = 1.5,
         coverage_spread_min_m: float = 0.8,
+        movement_model=None,    # MovementModel | None (순환 import 방지로 타입 미지정)
     ):
         self.court_width = court_width_m
         self.court_height = court_height_m
@@ -121,6 +141,7 @@ class TacticEngine:
         self.gap_min = gap_min_m
         self.backline_depth = backline_depth_m
         self.coverage_spread_min = coverage_spread_min_m
+        self._movement_model = movement_model
         self._team_assignment: Dict[int, str] = {}
 
     # ----- 팀 배정 -----
@@ -175,16 +196,16 @@ class TacticEngine:
         teammates: List[PlayerState],
         opponents: List[PlayerState],
     ) -> TacticAdvice:
-        """단일 선수에 대한 우선순위 기반 규칙 적용."""
+        """단일 선수에 대한 우선순위 기반 규칙 적용 + MovementModel 블렌딩."""
 
-        # 기본값: 현재 위치 유지
+        # 기본값
         target = me.pos
         urgency = "LOW"
         reason = "위치 유지"
         voice = ""
         rule = "BASE"
 
-        # R5: 적이 자기 진영 깊이 들어옴 → 후퇴
+        # R5: 적이 자기 진영 깊이 들어옴 → 후퇴 (HIGH — ML 무시)
         own_half_x_range = (0, self.court_width / 2) if team == "A" else (self.court_width / 2, self.court_width)
         opps_in_own_half_deep = [
             o for o in opponents
@@ -192,95 +213,106 @@ class TacticEngine:
             and self._depth_in_own_half(o.court_x, team) > self.backline_depth
         ]
         if len(opps_in_own_half_deep) >= 2:
-            # 자기 진영 가장 안쪽으로 후퇴
             target_x = own_half_x_range[0] + 0.4 if team == "A" else own_half_x_range[1] - 0.4
             target = (target_x, me.court_y)
-            urgency = "HIGH"
-            reason = "적 다수 침투 — 후방 수비"
-            voice = "후방 수비"
-            rule = "R5"
-            return self._make_advice(me, team, target, urgency, reason, voice, rule)
+            urgency, reason, voice, rule = "HIGH", "적 다수 침투 — 후방 수비", "후방 수비", "R5"
 
-        # R3: 정면 카운터 위협 (가까운 적이 같은 y선)
-        threats = [
-            o for o in opponents
-            if _dist(o.pos, me.pos) < self.counter_range
-            and abs(o.court_y - me.court_y) < self.counter_y_offset
-        ]
-        if threats:
+        # R3: 정면 카운터 위협 (HIGH — ML 무시)
+        elif [o for o in opponents
+              if _dist(o.pos, me.pos) < self.counter_range
+              and abs(o.court_y - me.court_y) < self.counter_y_offset]:
+            threats = [o for o in opponents
+                       if _dist(o.pos, me.pos) < self.counter_range
+                       and abs(o.court_y - me.court_y) < self.counter_y_offset]
             nearest = min(threats, key=lambda o: _dist(o.pos, me.pos))
-            # 측면(y 방향)으로 회피 — 코트 중심에서 먼 쪽
             avoid_y = self.court_height - 0.4 if me.court_y < self.court_height / 2 else 0.4
-            target = (me.court_x, avoid_y)
-            # x 후퇴도 살짝
             if team == "A":
                 target = (max(0.3, me.court_x - 0.3), avoid_y)
             else:
                 target = (min(self.court_width - 0.3, me.court_x + 0.3), avoid_y)
-            urgency = "HIGH"
+            urgency, voice, rule = "HIGH", "측면 회피", "R3"
             reason = f"정면 위협 (적 #{nearest.track_id})"
-            voice = "측면 회피"
-            rule = "R3"
-            return self._make_advice(me, team, target, urgency, reason, voice, rule)
 
-        # R1: 팀원과 너무 가깝다 → 분산
-        if teammates:
-            for mate in teammates:
-                if _dist(mate.pos, me.pos) < self.spacing_min:
-                    # 중심에서 더 먼 쪽으로
-                    if me.court_y < mate.court_y:
-                        target = (me.court_x, max(0.3, me.court_y - 0.6))
-                    else:
-                        target = (me.court_x, min(self.court_height - 0.3, me.court_y + 0.6))
-                    urgency = "MID"
-                    reason = f"팀원과 너무 가까움 (#{mate.track_id})"
-                    voice = "거리 확보"
-                    rule = "R1"
-                    return self._make_advice(me, team, target, urgency, reason, voice, rule)
+        # R1: 팀원 너무 가까움 → 분산 (MID)
+        elif teammates and any(_dist(m.pos, me.pos) < self.spacing_min for m in teammates):
+            mate = min(teammates, key=lambda m: _dist(m.pos, me.pos))
+            if me.court_y < mate.court_y:
+                target = (me.court_x, max(0.3, me.court_y - 0.6))
+            else:
+                target = (me.court_x, min(self.court_height - 0.3, me.court_y + 0.6))
+            urgency, voice, rule = "MID", "거리 확보", "R1"
+            reason = f"팀원과 너무 가까움 (#{mate.track_id})"
 
-        # R4: 적 팀 사이 공간 공격
-        if len(opponents) >= 2:
+        # R4: 적 라인 사이 공간 공격 (MID)
+        elif len(opponents) >= 2:
             opp_sorted = sorted(opponents, key=lambda o: o.court_y)
+            _r4_applied = False
             for i in range(len(opp_sorted) - 1):
-                gap_y = (opp_sorted[i].court_y + opp_sorted[i + 1].court_y) / 2
                 gap_size = opp_sorted[i + 1].court_y - opp_sorted[i].court_y
                 if gap_size > self.gap_min:
-                    # 적 라인까지 전진하되 적 평균 x보다 살짝 뒤
+                    gap_y = (opp_sorted[i].court_y + opp_sorted[i + 1].court_y) / 2
                     opp_x_avg = sum(o.court_x for o in opponents) / len(opponents)
+                    half = self.court_width / 2
                     if team == "A":
-                        target_x = max(me.court_x, min(opp_x_avg - 0.4, self.court_width - 0.5))
+                        target_x = max(me.court_x, min(opp_x_avg - 0.4, half - 0.1))
                     else:
-                        target_x = min(me.court_x, max(opp_x_avg + 0.4, 0.5))
+                        target_x = min(me.court_x, max(opp_x_avg + 0.4, half + 0.1))
                     target = (target_x, gap_y)
-                    urgency = "MID"
+                    urgency, voice, rule = "MID", "공격 전진", "R4"
                     reason = f"적 라인 공간 공격 ({gap_size:.1f}m gap)"
-                    voice = "공격 전진"
-                    rule = "R4"
-                    return self._make_advice(me, team, target, urgency, reason, voice, rule)
+                    _r4_applied = True
+                    break
+            # R4 미적용 → R2 체크
+            if not _r4_applied and teammates:
+                ys = [t.court_y for t in teammates] + [me.court_y]
+                if max(ys) - min(ys) < self.coverage_spread_min:
+                    team_y_avg = sum(ys) / len(ys)
+                    if me.court_y >= team_y_avg:
+                        target = (me.court_x, min(self.court_height - 0.3, team_y_avg + 0.9))
+                    else:
+                        target = (me.court_x, max(0.3, team_y_avg - 0.9))
+                    urgency, voice, rule = "MID", "측면 커버", "R2"
+                    reason = "팀이 한쪽 쏠림 — 커버 분담"
 
-        # R2: 같은 팀이 좌우 한쪽으로 쏠림 → 반대편 커버
-        if teammates:
+        # R2: 팀 쏠림 커버 (opponents < 2인 경우)
+        elif teammates:
             ys = [t.court_y for t in teammates] + [me.court_y]
-            spread = max(ys) - min(ys)
-            if spread < self.coverage_spread_min:
-                # 내가 그룹의 위/아래 극단이면 그 방향으로 더 이동
+            if max(ys) - min(ys) < self.coverage_spread_min:
                 team_y_avg = sum(ys) / len(ys)
                 if me.court_y >= team_y_avg:
                     target = (me.court_x, min(self.court_height - 0.3, team_y_avg + 0.9))
                 else:
                     target = (me.court_x, max(0.3, team_y_avg - 0.9))
-                urgency = "MID"
+                urgency, voice, rule = "MID", "측면 커버", "R2"
                 reason = "팀이 한쪽 쏠림 — 커버 분담"
-                voice = "측면 커버"
-                rule = "R2"
-                return self._make_advice(me, team, target, urgency, reason, voice, rule)
 
-        # 기본 — 유지
-        return self._make_advice(me, team, target, urgency, reason, voice, rule)
+        # ── MovementModel 블렌딩 (HIGH urgency 제외) ──────────────
+        ml_conf = 0.0
+        if self._movement_model and me.role and urgency != "HIGH":
+            ctx = _rule_to_context(rule)
+            pred = self._movement_model.predict(me.pos, me.role, ctx, team)
+            if pred and pred.confidence >= self._ML_CONF_MIN:
+                w_ml   = pred.confidence * (self._ML_WEIGHT_BASE if rule == "BASE"
+                                             else self._ML_WEIGHT_MID)
+                w_rule = 1.0 - w_ml
+                tx = target[0] * w_rule + pred.target_pos[0] * w_ml
+                ty = target[1] * w_rule + pred.target_pos[1] * w_ml
+                # 진영 클리핑
+                if team == "A":
+                    tx = max(0.0, min(4.99, tx))
+                else:
+                    tx = max(5.01, min(self.court_width, tx))
+                ty = max(0.0, min(self.court_height, ty))
+                target  = (round(tx, 3), round(ty, 3))
+                ml_conf = pred.confidence
+                reason  = f"{reason} [ML {pred.confidence:.2f}]"
+
+        return self._make_advice(me, team, target, urgency, reason, voice, rule, ml_conf)
 
     def _make_advice(
         self, me: PlayerState, team: str, target: Tuple[float, float],
         urgency: str, reason: str, voice: str, rule: str,
+        ml_confidence: float = 0.0,
     ) -> TacticAdvice:
         dx, dy = target[0] - me.court_x, target[1] - me.court_y
         if not voice and _dist(target, me.pos) > 0.15:
@@ -294,6 +326,7 @@ class TacticEngine:
             reason=reason,
             voice_message=voice,
             rule=rule,
+            ml_confidence=ml_confidence,
         )
 
     def _depth_in_own_half(self, x: float, team: str) -> float:
