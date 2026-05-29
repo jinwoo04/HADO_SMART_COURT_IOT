@@ -19,6 +19,7 @@ class Detection:
     x2: float
     y2: float
     confidence: float
+    keypoints: "np.ndarray | None" = None  # (17, 3) [x, y, conf] — pose 모델 사용 시만
 
     @property
     def bbox(self) -> np.ndarray:
@@ -111,12 +112,18 @@ class PersonDetector:
         xyxy = boxes.xyxy.cpu().numpy()  # (N, 4)
         conf = boxes.conf.cpu().numpy()   # (N,)
 
+        # pose 모델이면 keypoints 추출
+        kpts_raw = getattr(results[0], "keypoints", None)
+        kpts_data = kpts_raw.data.cpu().numpy() if (kpts_raw is not None and len(kpts_raw) > 0) else None
+
         for i in range(len(xyxy)):
             x1, y1, x2, y2 = xyxy[i]
+            kpts = kpts_data[i] if kpts_data is not None else None  # (17, 3) or None
             detections.append(Detection(
                 x1=float(x1), y1=float(y1),
                 x2=float(x2), y2=float(y2),
                 confidence=float(conf[i]),
+                keypoints=kpts,
             ))
 
         return detections

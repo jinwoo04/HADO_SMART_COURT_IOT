@@ -38,6 +38,9 @@ case "$CMD" in
     demo)
         python -m src.demo "${@:2}"
         ;;
+    demo_pose|pose)
+        python -m src.demo_pose "${@:2}"
+        ;;
     annotate|ann)
         python -m src.annotate "${@:2}"
         ;;

@@ -24,3 +24,10 @@ models/
 # Claude Code
 .claude/
 data/pattern_snapshots/
+
+# 라벨링용 추출 프레임 (대용량, Roboflow로 관리)
+data/frames_for_labeling/
+
+# 임시 분석 이미지
+data/analysis_frames/
+data/*.jpg
