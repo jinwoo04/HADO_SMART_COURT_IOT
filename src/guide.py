@@ -19,10 +19,30 @@ from src.tactic_engine import TacticAdvice
 
 # 긴급도별 색상 (BGR)
 URGENCY_COLOR = {
-    "LOW": (180, 220, 100),    # 옅은 청록
+    "LOW": (180, 220, 100),    # 연두
     "MID": (0, 220, 255),      # 노랑
     "HIGH": (0, 80, 255),      # 빨강
 }
+
+_RULE_KO = {
+    "R1": "팀원 분산",
+    "R2": "코트 커버",
+    "R3": "측면 회피",
+    "R4": "갭 공격",
+    "R5": "수비 후퇴",
+    "BASE": "",
+}
+
+
+def _put_kr(img: np.ndarray, text: str, xy: tuple[int, int],
+            size: int, color: tuple[int, int, int]) -> None:
+    """한글 포함 텍스트 렌더링 (PIL 경유)."""
+    try:
+        from src.annotate import put_text_kr
+        put_text_kr(img, text, xy, size, color)
+    except Exception:
+        cv2.putText(img, text, xy, cv2.FONT_HERSHEY_SIMPLEX,
+                    size / 28, color, 1, cv2.LINE_AA)
 
 
 def draw_guide_on_birdeye(
@@ -30,37 +50,78 @@ def draw_guide_on_birdeye(
     advices: List[TacticAdvice],
     px_per_m: int = 100,
 ) -> np.ndarray:
-    """Bird-eye view 위에 추천 위치 + 이동 화살표 표시."""
+    """Bird-eye view에 전술 조언 화살표 표시.
+
+    화살표 의미
+    -----------
+    - 출발점(●) : 선수 현재 위치
+    - 화살표     : AI가 권장하는 이동 방향
+    - X 마크     : 권장 목표 위치
+    - 색상       : 긴급도 (연두=유지, 노랑=권장, 빨강=즉시이동)
+    - 라벨       : 발화된 규칙명 (예: 갭 공격, 측면 회피)
+    """
     out = court_img.copy()
+    h, w = out.shape[:2]
 
     for a in advices:
         if a.distance_m < 0.15:
-            continue  # 이동 권장 없음
+            continue
 
         color = URGENCY_COLOR.get(a.urgency, (200, 200, 200))
 
         cx = int(a.current_pos[0] * px_per_m)
         cy = int(a.current_pos[1] * px_per_m)
-        tx = int(a.target_pos[0] * px_per_m)
-        ty = int(a.target_pos[1] * px_per_m)
+        tx = max(4, min(w - 4, int(a.target_pos[0] * px_per_m)))
+        ty = max(4, min(h - 4, int(a.target_pos[1] * px_per_m)))
 
-        h, w = out.shape[:2]
-        # 코트 안쪽으로 클램프
-        tx = max(4, min(w - 4, tx))
-        ty = max(4, min(h - 4, ty))
-
-        # 추천 위치 X 마크
-        cv2.drawMarker(out, (tx, ty), color, markerType=cv2.MARKER_TILTED_CROSS,
-                       markerSize=18, thickness=2)
-        # 점선 효과의 두꺼운 화살표
+        # 현재 위치 작은 원
+        cv2.circle(out, (cx, cy), 5, color, -1, cv2.LINE_AA)
+        # 화살표
         cv2.arrowedLine(out, (cx, cy), (tx, ty), color,
-                        thickness=3, tipLength=0.25, line_type=cv2.LINE_AA)
-
-        # 긴급도 HIGH면 추천 위치에 펄스 원
+                        thickness=2, tipLength=0.3, line_type=cv2.LINE_AA)
+        # 목표 위치 X 마크
+        cv2.drawMarker(out, (tx, ty), color,
+                       markerType=cv2.MARKER_TILTED_CROSS,
+                       markerSize=16, thickness=2)
+        # HIGH: 목표 강조 원
         if a.urgency == "HIGH":
-            cv2.circle(out, (tx, ty), 22, color, 2, cv2.LINE_AA)
+            cv2.circle(out, (tx, ty), 20, color, 2, cv2.LINE_AA)
 
+        # 규칙 라벨 (목표 위치 옆)
+        rule_text = _RULE_KO.get(a.rule, a.rule)
+        if rule_text:
+            lx = min(tx + 8, w - 60)
+            ly = max(ty - 6, 14)
+            _put_kr(out, rule_text, (lx, ly), 13, color)
+
+    # 범례 (우하단)
+    _draw_legend(out)
     return out
+
+
+def _draw_legend(img: np.ndarray) -> None:
+    """화살표 범례 — 우하단 고정."""
+    h, w = img.shape[:2]
+    lw, lh = 148, 72
+    x0, y0 = w - lw - 6, h - lh - 6
+    overlay = img.copy()
+    cv2.rectangle(overlay, (x0, y0), (x0 + lw, y0 + lh), (20, 20, 20), -1)
+    cv2.addWeighted(overlay, 0.7, img, 0.3, 0, img)
+    cv2.rectangle(img, (x0, y0), (x0 + lw, y0 + lh), (80, 80, 80), 1)
+
+    _put_kr(img, "AI 전술 조언", (x0 + 6, y0 + 4),  12, (200, 200, 200))
+    cv2.line(img, (x0 + 6, y0 + 20), (x0 + 142, y0 + 20), (60, 60, 60), 1)
+
+    items = [
+        (URGENCY_COLOR["HIGH"], "즉시이동 (HIGH)"),
+        (URGENCY_COLOR["MID"],  "권장이동 (MID)"),
+        (URGENCY_COLOR["LOW"],  "위치유지 (LOW)"),
+    ]
+    for i, (clr, label) in enumerate(items):
+        iy = y0 + 26 + i * 15
+        cv2.arrowedLine(img, (x0 + 8, iy + 4), (x0 + 22, iy + 4),
+                        clr, 2, tipLength=0.4)
+        _put_kr(img, label, (x0 + 26, iy - 2), 11, clr)
 
 
 def draw_guide_text_on_frame(

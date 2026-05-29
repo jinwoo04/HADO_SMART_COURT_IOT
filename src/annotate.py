@@ -31,9 +31,11 @@ from PIL import Image, ImageDraw, ImageFont
 # ── 한글 폰트 (macOS / Linux 자동 선택) ──────────────────────
 def _find_korean_font() -> Optional[str]:
     candidates = [
-        "/System/Library/Fonts/Supplemental/AppleGothic.ttf",   # macOS
-        "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",       # Ubuntu
-        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/Library/Fonts/AppleSDGothicNeo.ttc",                    # macOS (Sequoia/Sonoma)
+        "/System/Library/Fonts/Supplemental/AppleGothic.ttf",     # macOS (older)
+        "/Library/Fonts/NanumGothic.ttf",                         # macOS (사용자 설치)
+        "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",        # Ubuntu
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", # Linux
     ]
     for p in candidates:
         if Path(p).exists():
