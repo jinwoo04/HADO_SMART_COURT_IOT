@@ -62,6 +62,7 @@ def draw_guide_on_birdeye(
     """
     out = court_img.copy()
     h, w = out.shape[:2]
+    drawn = 0
 
     for a in advices:
         if a.distance_m < 0.15:
@@ -93,9 +94,11 @@ def draw_guide_on_birdeye(
             lx = min(tx + 8, w - 60)
             ly = max(ty - 6, 14)
             _put_kr(out, rule_text, (lx, ly), 13, color)
+        drawn += 1
 
-    # 범례 (우하단)
-    _draw_legend(out)
+    # 범례 — 실제로 화살표가 그려진 경우만
+    if drawn > 0:
+        _draw_legend(out)
     return out
 
 

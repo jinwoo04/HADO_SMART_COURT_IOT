@@ -29,6 +29,12 @@ case "$CMD" in
     calibrate|cal)
         python -m src.calibrate "${@:2}"
         ;;
+    calibrate-aruco|aruco)
+        python -m src.calibrate --aruco "${@:2}"
+        ;;
+    gen-markers|markers)
+        python -m src.aruco_calibrate --gen-markers "${@:2}"
+        ;;
     bench|benchmark)
         python -m src.benchmark "${@:2}"
         ;;

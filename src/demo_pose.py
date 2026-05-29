@@ -115,10 +115,20 @@ def run(args) -> int:
     detector = PersonDetector(model_path=args.model,
                                imgsz=args.imgsz, conf_threshold=args.conf)
     tracker  = IoUTracker(iou_threshold=0.3, max_lost_frames=12)
-    calib    = _make_calib(frame_w, frame_h)
     px_per_m = 80
-    court_tmpl = render_court_birdeye(calib, px_per_m=px_per_m)
     tactic_engine = TacticEngine()
+
+    # ArUco 또는 근사 캘리브레이션
+    aruco_mode = args.aruco
+    if aruco_mode:
+        from src.aruco_calibrate import calibrate_from_aruco, detect_markers, draw_aruco_overlay
+        print("[PoseDemo] ArUco 모드: 첫 프레임에서 마커 자동 감지...")
+        calib = _make_calib(frame_w, frame_h)   # 감지 전까지 근사값 사용
+        _aruco_last_update = 0                   # 마지막 ArUco 업데이트 프레임
+    else:
+        calib = _make_calib(frame_w, frame_h)
+
+    court_tmpl = render_court_birdeye(calib, px_per_m=px_per_m)
 
     # 출력 비디오
     out_path = Path(args.out) if args.out else None
@@ -137,6 +147,16 @@ def run(args) -> int:
         if not ret:
             break
         fi += 1
+
+        # ── ArUco 자동 캘리브레이션 (30프레임마다 갱신) ──────
+        if aruco_mode and fi - _aruco_last_update >= 30:
+            new_calib = calibrate_from_aruco(frame)
+            if new_calib is not None:
+                calib = new_calib
+                court_tmpl = render_court_birdeye(calib, px_per_m=px_per_m)
+                _aruco_last_update = fi
+                if fi <= 31:
+                    print(f"[PoseDemo] ArUco 캘리브레이션 완료 (frame {fi})")
 
         # ── 감지 + 추적 ──────────────────────────────────────
         dets   = detector.detect(frame)
@@ -206,6 +226,11 @@ def run(args) -> int:
             if feat:
                 draw_posture_label(cam_view, det, feat)
                 posture_counts[feat.posture] = posture_counts.get(feat.posture, 0) + 1
+
+        # ArUco 마커 오버레이
+        if aruco_mode:
+            detected = detect_markers(cam_view)
+            cam_view = draw_aruco_overlay(cam_view, detected, calib)
 
         # 이동 예측 화살표
         _draw_prediction_overlay(cam_view, tracks)
@@ -287,6 +312,8 @@ def main() -> None:
     parser.add_argument("--out",      default="",         help="출력 mp4 경로 (미지정 시 저장 안 함)")
     parser.add_argument("--imgsz",    type=int,   default=320)
     parser.add_argument("--conf",     type=float, default=0.35)
+    parser.add_argument("--aruco",    action="store_true",
+                        help="ArUco 마커 자동 캘리브레이션 (코트 코너에 ID 0-3 마커 부착 필요)")
     parser.add_argument("--headless", action="store_true")
     raise SystemExit(run(parser.parse_args()))
 

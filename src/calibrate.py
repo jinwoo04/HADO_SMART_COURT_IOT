@@ -170,6 +170,10 @@ def main():
     parser.add_argument("--court-width", type=float, default=10.0, help="코트 가로 (m)")
     parser.add_argument("--court-height", type=float, default=6.0, help="코트 세로 (m)")
     parser.add_argument("--output", default="config/calibration.json")
+    parser.add_argument("--aruco", action="store_true",
+                        help="ArUco 마커 자동 캘리브레이션 모드")
+    parser.add_argument("--gen-markers", action="store_true",
+                        help="코트 설치용 ArUco 마커 이미지 생성")
     args = parser.parse_args()
 
     try:
@@ -178,6 +182,22 @@ def main():
         source = args.source
 
     output_path = Path(args.output)
+
+    if args.gen_markers:
+        from src.aruco_calibrate import generate_marker_images
+        generate_marker_images()
+        sys.exit(0)
+
+    if args.aruco:
+        from src.aruco_calibrate import auto_calibrate_loop
+        calib = auto_calibrate_loop(
+            source=source,
+            court_width_m=args.court_width,
+            court_height_m=args.court_height,
+            output_path=output_path,
+            save_on_detect=True,
+        )
+        sys.exit(0 if calib else 1)
 
     with Camera(source=source, width=args.width, height=args.height) as cam:
         tool = CalibrationTool(args.court_width, args.court_height)
