@@ -78,14 +78,21 @@ def main() -> None:
     parser.add_argument("--out",   default="data/frames_for_labeling")
     parser.add_argument("--total", type=int, default=350,
                         help="목표 총 프레임 수 (자동으로 every_n 계산)")
+    parser.add_argument("--video", default=None,
+                        help="단일 영상 경로 (지정 시 해당 영상만 처리)")
+    parser.add_argument("--every-n", type=int, default=None,
+                        help="n프레임마다 1장 추출 (--video와 함께 사용)")
     args = parser.parse_args()
 
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    videos = sorted(Path("data").glob("*.mp4"))
-    videos = [v for v in videos
-              if not any(x in v.name for x in ["demo", "out", "preview"])]
+    if args.video:
+        videos = [Path(args.video)]
+    else:
+        videos = sorted(Path("data").glob("*.mp4"))
+        videos = [v for v in videos
+                  if not any(x in v.name for x in ["demo", "out", "preview"])]
 
     # 각 영상의 총 프레임 합산 → every_n 결정
     total_src = 0
@@ -94,7 +101,7 @@ def main() -> None:
         total_src += int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         cap.release()
 
-    every_n = max(1, total_src // args.total)
+    every_n = args.every_n or max(1, total_src // args.total)
     print(f"영상 {len(videos)}개, 총 {total_src}프레임 → every_n={every_n} (목표 ~{args.total}장)")
     print(f"출력 디렉토리: {out_dir}\n")
 
