@@ -20,7 +20,10 @@ import numpy as np
 
 from src.detector import Detection, PersonDetector
 from src.guide import draw_guide_on_birdeye
-from src.homography import compute_homography, pixel_to_court
+from src.homography import (
+    Intrinsics, build_undistort_maps, compute_homography,
+    pixel_to_court, undistort_frame,
+)
 from src.movement_model import MovementModel, MovementPrediction
 from src.pose import (
     POSTURE_COLOR, POSTURE_KO,
@@ -207,6 +210,19 @@ def run(args) -> int:
     total   = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     print(f"[PoseDemo] {args.video}  ({frame_w}×{frame_h} @{src_fps:.0f}fps, {total}프레임)")
 
+    # 렌즈 왜곡 보정 맵 로드 (--intrinsic 지정 시)
+    undistort_maps: tuple[np.ndarray, np.ndarray] | None = None
+    intrinsic_path = Path(f"config/cam{args.cam_id}_intrinsics.json")
+    if args.intrinsic:
+        if intrinsic_path.exists():
+            intr = Intrinsics.from_json(intrinsic_path)
+            undistort_maps = build_undistort_maps(intr)
+            print(f"[PoseDemo] 렌즈 보정 로드: {intrinsic_path}  "
+                  f"(RMS={intr.reprojection_error:.3f}px)")
+        else:
+            print(f"[PoseDemo] ⚠ intrinsics 파일 없음: {intrinsic_path}")
+            print(f"           먼저: ./run.sh calibrate --intrinsic --cam-id {args.cam_id}")
+
     # 모델 / 캘리브레이션 / 엔진 초기화
     detector = PersonDetector(model_path=args.model,
                                imgsz=args.imgsz, conf_threshold=args.conf)
@@ -255,6 +271,10 @@ def run(args) -> int:
                 _aruco_last_update = fi
                 if fi <= 31:
                     print(f"[PoseDemo] ArUco 캘리브레이션 완료 (frame {fi})")
+
+        # ── 렌즈 왜곡 보정 (intrinsics 로드된 경우) ──────────
+        if undistort_maps is not None:
+            frame = undistort_frame(frame, *undistort_maps)
 
         # ── 감지 + 추적 ──────────────────────────────────────
         dets   = detector.detect(frame)
@@ -425,9 +445,13 @@ def main() -> None:
     parser.add_argument("--out",      default="",         help="출력 mp4 경로 (미지정 시 저장 안 함)")
     parser.add_argument("--imgsz",    type=int,   default=320)
     parser.add_argument("--conf",     type=float, default=0.35)
-    parser.add_argument("--aruco",    action="store_true",
-                        help="ArUco 마커 자동 캘리브레이션 (코트 코너에 ID 0-3 마커 부착 필요)")
-    parser.add_argument("--headless", action="store_true")
+    parser.add_argument("--aruco",     action="store_true",
+                        help="ArUco 마커 자동 캘리브레이션")
+    parser.add_argument("--intrinsic", action="store_true",
+                        help="렌즈 왜곡 보정 적용 (config/cam{id}_intrinsics.json 필요)")
+    parser.add_argument("--cam-id",    type=int, default=0,
+                        help="카메라 ID (intrinsics 파일 선택용, 기본값=0)")
+    parser.add_argument("--headless",  action="store_true")
     raise SystemExit(run(parser.parse_args()))
 
 

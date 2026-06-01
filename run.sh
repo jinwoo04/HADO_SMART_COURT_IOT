@@ -32,6 +32,12 @@ case "$CMD" in
     calibrate-aruco|aruco)
         python -m src.calibrate --aruco "${@:2}"
         ;;
+    calibrate-intrinsic|intrinsic)
+        python -m src.calibrate --intrinsic "${@:2}"
+        ;;
+    gen-checkerboard|checkerboard)
+        python -m src.calibrate --gen-checkerboard
+        ;;
     gen-markers|markers)
         python -m src.aruco_calibrate --gen-markers "${@:2}"
         ;;

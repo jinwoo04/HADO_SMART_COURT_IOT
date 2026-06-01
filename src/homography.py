@@ -16,6 +16,72 @@ import numpy as np
 
 
 @dataclass
+class Intrinsics:
+    """렌즈 내부 파라미터 (왜곡 보정용).
+
+    calibrate.py --intrinsic 으로 생성, config/cam{id}_intrinsics.json 에 저장.
+    """
+    cam_id: int
+    image_size: Tuple[int, int]       # (width, height)
+    camera_matrix: np.ndarray         # 3×3
+    dist_coeffs: np.ndarray           # (5,) — k1 k2 p1 p2 k3
+    reprojection_error: float         # RMS (픽셀 단위, 0.5 이하면 양호)
+
+    @classmethod
+    def from_json(cls, path: str | Path) -> "Intrinsics":
+        with open(path, "r", encoding="utf-8") as f:
+            d = json.load(f)
+        return cls(
+            cam_id=int(d["cam_id"]),
+            image_size=tuple(d["image_size"]),
+            camera_matrix=np.array(d["camera_matrix"], dtype=np.float64),
+            dist_coeffs=np.array(d["dist_coeffs"], dtype=np.float64),
+            reprojection_error=float(d["reprojection_error"]),
+        )
+
+    def to_json(self, path: str | Path) -> None:
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump({
+                "cam_id": self.cam_id,
+                "image_size": list(self.image_size),
+                "camera_matrix": self.camera_matrix.tolist(),
+                "dist_coeffs": self.dist_coeffs.tolist(),
+                "reprojection_error": self.reprojection_error,
+            }, f, indent=2)
+
+
+def build_undistort_maps(
+    intrinsics: Intrinsics,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """cv2.remap()용 맵 사전 계산 (초기화 시 1회 호출).
+
+    Returns
+    -------
+    map1, map2 : remap에 넘길 int16 맵 쌍
+    """
+    w, h = intrinsics.image_size
+    map1, map2 = cv2.initUndistortRectifyMap(
+        intrinsics.camera_matrix,
+        intrinsics.dist_coeffs,
+        None,
+        intrinsics.camera_matrix,
+        (w, h),
+        cv2.CV_16SC2,
+    )
+    return map1, map2
+
+
+def undistort_frame(
+    frame: np.ndarray,
+    map1: np.ndarray,
+    map2: np.ndarray,
+) -> np.ndarray:
+    """사전 계산된 맵으로 프레임 왜곡 보정 (~2ms/frame on Pi 4)."""
+    return cv2.remap(frame, map1, map2, cv2.INTER_LINEAR)
+
+
+@dataclass
 class Calibration:
     """캘리브레이션 데이터 컨테이너."""
     court_width_m: float
