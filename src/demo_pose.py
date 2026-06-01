@@ -21,6 +21,7 @@ import numpy as np
 from src.detector import Detection, PersonDetector
 from src.guide import draw_guide_on_birdeye
 from src.homography import compute_homography, pixel_to_court
+from src.movement_model import MovementModel, MovementPrediction
 from src.pose import (
     POSTURE_COLOR, POSTURE_KO,
     analyze_pose, draw_movement_arrow, draw_posture_label, draw_skeleton,
@@ -65,17 +66,112 @@ def _assign_team(track_id: int, foot_x_px: float, frame_w: int) -> str:
     return _team_cache[track_id]
 
 
+# ---------- 역할 추정 (코트 좌표 기반) ----------
+def _infer_roles(
+    tracks: list[Track],
+    court_pts: np.ndarray,
+) -> dict[int, str]:
+    """코트 내 위치로 각 선수 역할 추정.
+
+    중앙선(x=5m)에 가장 가까운 선수 → main_attacker
+    나머지: 극단 레인(y<2 or y>4) → technician, 그 외 → defender
+    """
+    roles: dict[int, str] = {}
+    team_players: dict[str, list[tuple[int, tuple[float, float]]]] = {"A": [], "B": []}
+
+    for i, t in enumerate(tracks):
+        if i >= len(court_pts):
+            continue
+        team = _team_cache.get(t.track_id, "A")
+        team_players[team].append((t.track_id, (float(court_pts[i][0]), float(court_pts[i][1]))))
+
+    for team, players in team_players.items():
+        if not players:
+            continue
+        # 중앙선까지 거리 기준 정렬 → 가장 가까운 = main_attacker
+        by_dist = sorted(players, key=lambda p: abs(p[1][0] - 5.0))
+        roles[by_dist[0][0]] = "main_attacker"
+        for tid, (cx, cy) in by_dist[1:]:
+            roles[tid] = "technician" if (cy < 2.0 or cy > 4.0) else "defender"
+
+    return roles
+
+
+# ---------- 게임 상황 추정 (팀별 평균 x 위치) ----------
+def _infer_contexts(
+    tracks: list[Track],
+    court_pts: np.ndarray,
+) -> dict[str, str]:
+    """팀별 평균 전진도로 attack/defend/transition 구분.
+
+    팀A: 평균 x > 2.5m → attack  /  팀B: 평균 x < 7.5m → attack
+    양 팀 모두 attack 국면이면 → transition
+    """
+    xs: dict[str, list[float]] = {"A": [], "B": []}
+    for i, t in enumerate(tracks):
+        if i >= len(court_pts):
+            continue
+        team = _team_cache.get(t.track_id, "A")
+        xs[team].append(float(court_pts[i][0]))
+
+    def _ctx(team: str) -> str:
+        if not xs[team]:
+            return "attack"
+        avg = sum(xs[team]) / len(xs[team])
+        return "attack" if (team == "A" and avg > 2.5) or (team == "B" and avg < 7.5) else "defend"
+
+    ctx_a, ctx_b = _ctx("A"), _ctx("B")
+    if ctx_a == "attack" and ctx_b == "attack":
+        return {"A": "transition", "B": "transition"}
+    return {"A": ctx_a, "B": ctx_b}
+
+
 # ---------- 이동 예측 오버레이 ----------
 def _draw_prediction_overlay(
     frame: np.ndarray,
     tracks: list[Track],
 ) -> None:
-    """각 선수 트랙의 이동 벡터 → 예측 위치 화살표."""
+    """카메라 뷰: 속도 벡터 기반 단기 예측 화살표 (1~12프레임 앞)."""
     for t in tracks:
         if len(t.history) < 4:
             continue
         color = (0, 220, 255) if _team_cache.get(t.track_id) == "A" else (255, 180, 60)
         draw_movement_arrow(frame, list(t.history), color=color)
+
+
+def _draw_model_predictions(
+    birdeye: np.ndarray,
+    preds: dict[int, tuple[MovementPrediction | None, str]],
+    px_per_m: int,
+) -> None:
+    """버드아이뷰: k-NN 모델 예측 경로 표시.
+
+    실선 경로  : 매칭된 패턴의 남은 이동 경로
+    다이아몬드 : 목표 도달 위치
+    숫자       : 신뢰도 (%)
+    """
+    for track_id, (pred, team) in preds.items():
+        if pred is None or pred.confidence < 0.25:
+            continue
+
+        color = (80, 220, 130) if team == "A" else (80, 160, 255)
+
+        # 전체 예측 경로
+        path = pred.full_path
+        for i in range(len(path) - 1):
+            p1 = (int(path[i][0] * px_per_m), int(path[i][1] * px_per_m))
+            p2 = (int(path[i + 1][0] * px_per_m), int(path[i + 1][1] * px_per_m))
+            cv2.line(birdeye, p1, p2, color, 1, cv2.LINE_AA)
+
+        # 목표 위치 마커
+        tx = int(pred.target_pos[0] * px_per_m)
+        ty = int(pred.target_pos[1] * px_per_m)
+        cv2.drawMarker(birdeye, (tx, ty), color,
+                       markerType=cv2.MARKER_DIAMOND, markerSize=14, thickness=2)
+
+        # 신뢰도
+        cv2.putText(birdeye, f"{pred.confidence:.0%}",
+                    (tx + 7, ty - 3), cv2.FONT_HERSHEY_SIMPLEX, 0.32, color, 1)
 
 
 # ---------- 자세 통계 오버레이 ----------
@@ -114,9 +210,11 @@ def run(args) -> int:
     # 모델 / 캘리브레이션 / 엔진 초기화
     detector = PersonDetector(model_path=args.model,
                                imgsz=args.imgsz, conf_threshold=args.conf)
-    tracker  = IoUTracker(iou_threshold=0.3, max_lost_frames=12)
-    px_per_m = 80
+    tracker       = IoUTracker(iou_threshold=0.3, max_lost_frames=12)
+    px_per_m      = 80
     tactic_engine = TacticEngine()
+    movement_model = MovementModel()
+    print(f"[PoseDemo] MovementModel: {movement_model.pattern_count}개 패턴 로드")
 
     # ArUco 또는 근사 캘리브레이션
     aruco_mode = args.aruco
@@ -183,6 +281,20 @@ def run(args) -> int:
                 ))
 
         advices = tactic_engine.analyze(player_states) if player_states else []
+
+        # ── 역할·상황 추정 → k-NN 이동 예측 ─────────────────────────
+        roles    = _infer_roles(tracks, court_pts)
+        contexts = _infer_contexts(tracks, court_pts)
+        mv_preds: dict[int, tuple[MovementPrediction | None, str]] = {}
+        for i, t in enumerate(tracks):
+            if i >= len(court_pts):
+                continue
+            team = _team_cache.get(t.track_id, "A")
+            pos  = (float(court_pts[i][0]), float(court_pts[i][1]))
+            role = roles.get(t.track_id, "main_attacker")
+            ctx  = contexts.get(team, "attack")
+            pred = movement_model.predict(pos, role, ctx, team)
+            mv_preds[t.track_id] = (pred, team)
 
         # ── 자세 분석 ─────────────────────────────────────────
         # track_id → Detection 매핑 (IoU로 연결 안 됐으면 가장 가까운 det)
@@ -259,6 +371,7 @@ def run(args) -> int:
                     cv2.circle(birdeye, (cx, cy), 13, pc, 2, cv2.LINE_AA)
 
         birdeye = draw_guide_on_birdeye(birdeye, advices, px_per_m=px_per_m)
+        _draw_model_predictions(birdeye, mv_preds, px_per_m)
 
         # ── 자세 통계 & FPS ───────────────────────────────────
         _draw_posture_stats(cam_view, posture_counts)
