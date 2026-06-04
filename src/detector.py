@@ -76,7 +76,8 @@ class PersonDetector:
             ) from e
 
         print(f"[Detector] 모델 로드 중: {model_path}")
-        self.model = YOLO(model_path)
+        task = "pose" if "pose" in str(model_path) else "detect"
+        self.model = YOLO(model_path, task=task)
         print(f"[Detector] 준비 완료 (imgsz={imgsz}, conf={conf_threshold}, device={device})")
 
     def detect(self, frame: np.ndarray) -> List[Detection]:
