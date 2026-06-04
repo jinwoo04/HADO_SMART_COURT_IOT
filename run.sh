@@ -53,6 +53,21 @@ case "$CMD" in
     demo_pose|pose)
         python -m src.demo_pose "${@:2}"
         ;;
+    match)
+        python -m src.main --match "${@:2}"
+        ;;
+    match-upload)
+        python -m src.main --match --upload "${@:2}"
+        ;;
+    analyze)
+        python -m src.analyzer "${@:2}"
+        ;;
+    upload)
+        python -m src.upload "${@:2}"
+        ;;
+    upload-setup)
+        python -m src.upload --setup
+        ;;
     annotate|ann)
         python -m src.annotate "${@:2}"
         ;;

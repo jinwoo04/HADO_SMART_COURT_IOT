@@ -33,13 +33,16 @@ import cv2
 import numpy as np
 import yaml
 
+from src.analyzer import analyze_match
 from src.camera import Camera
 from src.detector import PersonDetector
 from src.guide import VoiceGuide, draw_guide_on_birdeye, draw_guide_text_on_frame
 from src.homography import Calibration, pixel_to_court
 from src.movement_model import MovementModel
+from src.recorder import MatchRecorder
 from src.tactic_engine import PlayerState, TacticEngine
 from src.tracker import IoUTracker
+from src.upload import upload_match
 from src.visualizer import (
     combine_views,
     draw_detections_on_frame,
@@ -146,7 +149,7 @@ def run(args):
     )
     cam.open()
 
-    # MP4 출력 (옵션)
+    # MP4 출력 (옵션: --record)
     video_writer = None
     if args.record:
         rec_path = Path(args.record)
@@ -165,6 +168,12 @@ def run(args):
         out_h = h_cam
         video_writer = cv2.VideoWriter(str(rec_path), fourcc, 20.0, (out_w, out_h))
         print(f"[Record] {rec_path} ({out_w}x{out_h} @20fps)")
+
+    # 경기 녹화 모드 (--match): 타임스탬프 폴더 + CSV + 사후 분석
+    match_recorder: MatchRecorder | None = None
+    if args.match:
+        matches_dir = PROJECT_ROOT / "data" / "matches"
+        match_recorder = MatchRecorder(matches_dir, calib)
 
     # 상태 변수
     fps = 0.0
@@ -246,6 +255,11 @@ def run(args):
             if video_writer is not None:
                 video_writer.write(combined)
 
+            if match_recorder is not None:
+                if frame_idx == 0:
+                    match_recorder.start(combined.shape)
+                match_recorder.write(combined, tracks, birdeye)
+
             if not args.headless:
                 cv2.imshow("HADO Smart Court", combined)
                 key = cv2.waitKey(1) & 0xFF
@@ -296,6 +310,11 @@ def run(args):
         if video_writer:
             video_writer.release()
             print(f"[Record] 저장 완료: {args.record}")
+        if match_recorder is not None:
+            match_dir = match_recorder.stop()
+            analyze_match(match_dir, calib)
+            if args.upload:
+                upload_match(match_dir)
         if voice_guide:
             voice_guide.close()
         cam.close()
@@ -316,6 +335,10 @@ def main():
     parser.add_argument("--headless", action="store_true", help="GUI 창 없이 실행 (SSH 환경용)")
     parser.add_argument("--record", default=None, help="출력 영상 mp4 경로")
     parser.add_argument("--max-frames", type=int, default=0, help="이만큼 처리 후 종료 (0=무제한)")
+    parser.add_argument("--match", action="store_true",
+                        help="경기 녹화 모드: data/matches/<timestamp>/ 에 MP4+CSV+통계 저장")
+    parser.add_argument("--upload", action="store_true",
+                        help="경기 종료 후 구글 드라이브 자동 업로드 (rclone 필요)")
     args = parser.parse_args()
     raise SystemExit(run(args))
 
