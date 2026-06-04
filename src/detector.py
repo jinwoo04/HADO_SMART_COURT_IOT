@@ -99,8 +99,7 @@ class PersonDetector:
         -------
         list[Detection]
         """
-        results = self.model(
-            frame,
+        _kwargs = dict(
             imgsz=self.imgsz,
             conf=self.conf_threshold,
             iou=self.iou_threshold,
@@ -108,6 +107,13 @@ class PersonDetector:
             device=self.device,
             verbose=False,
         )
+        try:
+            results = self.model(frame, **_kwargs)
+        except AttributeError as _e:
+            if "kpt_shape" not in str(_e):
+                raise
+            self.model.predictor.model.kpt_shape = [17, 3]
+            results = self.model(frame, **_kwargs)
 
         detections: list[Detection] = []
         if not results:
