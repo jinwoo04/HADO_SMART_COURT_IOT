@@ -78,6 +78,14 @@ class PersonDetector:
         print(f"[Detector] 모델 로드 중: {model_path}")
         task = "pose" if "pose" in str(model_path) else "detect"
         self.model = YOLO(model_path, task=task)
+        if task == "pose":
+            _dummy = np.zeros((imgsz, imgsz, 3), dtype=np.uint8)
+            try:
+                self.model.predict(_dummy, imgsz=imgsz, verbose=False)
+            except AttributeError as _e:
+                if "kpt_shape" in str(_e):
+                    self.model.predictor.model.kpt_shape = [17, 3]
+                    self.model.predict(_dummy, imgsz=imgsz, verbose=False)
         print(f"[Detector] 준비 완료 (imgsz={imgsz}, conf={conf_threshold}, device={device})")
 
     def detect(self, frame: np.ndarray) -> List[Detection]:
