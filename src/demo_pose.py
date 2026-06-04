@@ -25,6 +25,7 @@ from src.homography import (
     pixel_to_court, undistort_frame,
 )
 from src.movement_model import MovementModel, MovementPrediction
+from src.vest import VestResult, detect_vest, draw_vest_label, VEST_COLOR_BGR, ROLE_KO
 from src.pose import (
     POSTURE_COLOR, POSTURE_KO,
     analyze_pose, draw_movement_arrow, draw_posture_label, draw_skeleton,
@@ -98,6 +99,24 @@ def _infer_roles(
             roles[tid] = "technician" if (cy < 2.0 or cy > 4.0) else "defender"
 
     return roles
+
+
+# ---------- 조끼 색상 기반 역할 감지 ----------
+def _detect_roles_from_vest(
+    frame: np.ndarray,
+    tracks: list[Track],
+    det_map: dict[int, Detection],
+) -> dict[int, str]:
+    """조끼 색상으로 포지션 판별. 신뢰도 낮으면 코트 위치 추정으로 fallback."""
+    vest_roles: dict[int, str] = {}
+    for t in tracks:
+        det = det_map.get(t.track_id)
+        if det is None:
+            continue
+        result = detect_vest(frame, det)
+        if result.role != "unknown" and result.confidence >= 0.35:
+            vest_roles[t.track_id] = result.role
+    return vest_roles
 
 
 # ---------- 게임 상황 추정 (팀별 평균 x 위치) ----------
@@ -302,8 +321,22 @@ def run(args) -> int:
 
         advices = tactic_engine.analyze(player_states) if player_states else []
 
-        # ── 역할·상황 추정 → k-NN 이동 예측 ─────────────────────────
-        roles    = _infer_roles(tracks, court_pts)
+        # ── Detection 매핑 (track_id → 가장 가까운 Detection) ────
+        det_map: dict[int, Detection] = {}
+        for t in tracks:
+            best = min(
+                dets,
+                key=lambda d: abs(d.foot_point[0] - t.foot_point[0])
+                              + abs(d.foot_point[1] - t.foot_point[1]),
+                default=None,
+            )
+            if best:
+                det_map[t.track_id] = best
+
+        # ── 역할 감지: 조끼 색상 우선, 실패 시 코트 위치로 fallback ──
+        vest_roles = _detect_roles_from_vest(frame, tracks, det_map)
+        pos_roles  = _infer_roles(tracks, court_pts)
+        roles = {**pos_roles, **vest_roles}   # 조끼 감지 결과가 위치 추정을 덮어씀
         contexts = _infer_contexts(tracks, court_pts)
         mv_preds: dict[int, tuple[MovementPrediction | None, str]] = {}
         for i, t in enumerate(tracks):
@@ -315,20 +348,6 @@ def run(args) -> int:
             ctx  = contexts.get(team, "attack")
             pred = movement_model.predict(pos, role, ctx, team)
             mv_preds[t.track_id] = (pred, team)
-
-        # ── 자세 분석 ─────────────────────────────────────────
-        # track_id → Detection 매핑 (IoU로 연결 안 됐으면 가장 가까운 det)
-        det_map: dict[int, Detection] = {}
-        for t in tracks:
-            # tracker history의 최신 bbox를 dets에서 찾아 매핑
-            best = min(
-                dets,
-                key=lambda d: abs(d.foot_point[0] - t.foot_point[0])
-                              + abs(d.foot_point[1] - t.foot_point[1]),
-                default=None,
-            )
-            if best:
-                det_map[t.track_id] = best
 
         # ── 카메라 뷰 렌더링 ──────────────────────────────────
         cam_view = frame.copy()
@@ -352,6 +371,17 @@ def run(args) -> int:
 
             # 스켈레톤
             draw_skeleton(cam_view, det, base_color=color)
+
+            # 조끼 색상 포지션 라벨
+            vest_result = detect_vest(cam_view, det)
+            if vest_result.role != "unknown":
+                draw_vest_label(cam_view, det, vest_result)
+                color = VEST_COLOR_BGR.get(vest_result.role, color)
+                # 조끼 감지된 경우 bbox도 포지션 색으로 재표시
+                cv2.rectangle(cam_view,
+                              (int(det.x1), int(det.y1)),
+                              (int(det.x2), int(det.y2)),
+                              color, 2)
 
             # 자세 라벨
             feat = analyze_pose(det)
