@@ -140,7 +140,24 @@ class PatternPlayer:
     - 절대 좌표(to_x, to_y)로 목표 위치를 결정해 drift 방지
     - context(attack/defend/transition)에 맞는 패턴만 선택
     - Team B는 x축을 5.0m 기준으로 미러링
+    - role_name으로 역할별 구역 제한(defender: x≤2.2m, attacker: x≥2.5m)
     """
+
+    # 역할별 구역 제한 (컨텍스트별)
+    # defender: 수비 시 x≤1.8m, 공격 시에도 최대 x≤3.8m (완전 전방은 안 감)
+    # main_attacker: 공격 시 x≥2.5m, 수비 시에도 최소 x≥0.5m
+    _ZONE_CLAMP: dict[str, dict[str, tuple[float, float]]] = {
+        "defender": {
+            "defend":     (0.1, 1.8),
+            "attack":     (0.3, 3.8),
+            "transition": (0.2, 2.5),
+        },
+        "main_attacker": {
+            "attack":     (2.5, 4.9),
+            "defend":     (0.5, 3.5),
+            "transition": (1.5, 4.0),
+        },
+    }
 
     def __init__(
         self,
@@ -148,10 +165,13 @@ class PatternPlayer:
         team: str,
         start: tuple[float, float],
         seed: int = 0,
+        role_name: str = "",
     ):
         self._team = team
+        self._role_name = role_name
         self._pos: list[float] = list(start)
         self._context = "attack"
+        self._pending_context: str | None = None
         self._rng = random.Random(seed)
         self._patterns_by_ctx = patterns_by_ctx
         self._intent = ""
@@ -179,9 +199,9 @@ class PatternPlayer:
         return (dx / norm, dy / norm)
 
     def set_context(self, ctx: str) -> None:
-        if ctx != self._context:
-            self._context = ctx
-            self._pick_new_pattern()
+        """컨텍스트 전환 요청 — 현재 스텝 완료 후 반영(끊김 방지)."""
+        if ctx != self._context and ctx != self._pending_context:
+            self._pending_context = ctx
 
     @property
     def intent(self) -> str:
@@ -228,6 +248,11 @@ class PatternPlayer:
             tx = max(5.1, min(9.9, tx))
         ty = max(0.1, min(5.9, ty))
 
+        # 역할별 구역 제한 — defender는 수비 시 x≤2.2m, attacker는 공격 시 x≥2.5m
+        zone = self._ZONE_CLAMP.get(self._role_name, {}).get(self._context)
+        if zone:
+            tx = max(zone[0], min(zone[1], tx))
+
         self._step_start    = self._pos[:]
         self._step_end      = [tx, ty]
         self._fpt           = _FRAMES_PER_INTENT.get(self._intent, _DEFAULT_FPT)
@@ -245,11 +270,17 @@ class PatternPlayer:
 
         if self._frame_in_step >= self._fpt:
             self._pos = self._step_end[:]
-            self._step_idx += 1
-            if self._step_idx >= len(self._cur_pattern):
+            # 대기 중인 컨텍스트 전환이 있으면 스텝 경계에서 처리
+            if self._pending_context is not None:
+                self._context = self._pending_context
+                self._pending_context = None
                 self._pick_new_pattern()
             else:
-                self._load_step()
+                self._step_idx += 1
+                if self._step_idx >= len(self._cur_pattern):
+                    self._pick_new_pattern()
+                else:
+                    self._load_step()
 
         return (self._pos[0], self._pos[1])
 
@@ -270,6 +301,51 @@ def _draw_status_bar(img: np.ndarray, sim: dict[int, PatternPlayer]) -> None:
         parts.append(f"#{pid} {role_ko}" + (f" [{intent_ko}]" if intent_ko else ""))
 
     put_text_kr(img, "  ·  ".join(parts), (8, h - 19), 12, (140, 255, 180))
+
+
+def _draw_zone_hud(img: np.ndarray, pos: dict[int, tuple[float, float]]) -> None:
+    """우상단 미니 HUD: 현재 선수별 구역(1·2·3선) 위치 표시.
+
+    Zone 1: x < 1.5m (깊은 수비)
+    Zone 2: 1.5 ≤ x < 3.0m (미들)
+    Zone 3: x ≥ 3.0m (전방/공격)
+    """
+    zones = {1: [], 2: [], 3: []}
+    for pid, (x, _) in pos.items():
+        if x < 1.5:
+            zones[1].append(pid)
+        elif x < 3.0:
+            zones[2].append(pid)
+        else:
+            zones[3].append(pid)
+
+    h, w = img.shape[:2]
+    panel_w, panel_h = 110, 58
+    x0 = w - panel_w - 6
+    y0 = 4
+
+    overlay = img.copy()
+    cv2.rectangle(overlay, (x0, y0), (x0 + panel_w, y0 + panel_h), (10, 10, 10), -1)
+    cv2.addWeighted(overlay, 0.72, img, 0.28, 0, img)
+    cv2.rectangle(img, (x0, y0), (x0 + panel_w, y0 + panel_h), (60, 60, 60), 1)
+
+    cv2.putText(img, "Zone", (x0 + 4, y0 + 13),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.38, (160, 160, 160), 1, cv2.LINE_AA)
+
+    zone_labels = ["1  (back)", "2  (mid)", "3  (front)"]
+    zone_colors = [(255, 160, 60), (60, 200, 255), (60, 80, 255)]
+    for i, (lbl, clr) in enumerate(zip(zone_labels, zone_colors)):
+        pids = zones[i + 1]
+        count_dot = "●" * len(pids) if pids else "○"
+        iy = y0 + 26 + i * 13
+        cv2.putText(img, lbl, (x0 + 4, iy),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.33, (130, 130, 130), 1, cv2.LINE_AA)
+        cv2.putText(img, str(len(pids)), (x0 + panel_w - 18, iy),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.38, clr, 1, cv2.LINE_AA)
+        # 작은 원으로 각 선수 표시
+        for j in range(len(pids)):
+            cx = x0 + panel_w - 28 - j * 9
+            cv2.circle(img, (cx, iy - 3), 3, clr, -1, cv2.LINE_AA)
 
 
 # ---------- 카메라 배경 / bbox ----------
@@ -389,14 +465,24 @@ def _generate_demo_heatmap(
             cv2.addWeighted(overlay, 0.3, colored, 0.7, 0, colored)
             cv2.rectangle(colored, (px0, 0), (px1, H), (255, 255, 100), 2)
 
-        # 구역 점유율 계산 (역할별 기준 구역 내 체류 비율)
+        # 구역 점유율 계산 — 수비/공격 페이즈 기준 통계
         if rows:
             if label == "Attacker":
-                in_zone = sum(1 for r in rows if r["x"] >= 3.0)
-                pct_txt = f"Attack Zone: {in_zone/len(rows)*100:.0f}%"
+                atk_rows = [r for r in rows if r.get("phase") == "attack"]
+                if atk_rows:
+                    in_zone = sum(1 for r in atk_rows if r["x"] >= 3.0)
+                    pct_txt = f"Atk Zone(atk phase): {in_zone/len(atk_rows)*100:.0f}%"
+                else:
+                    in_zone = sum(1 for r in rows if r["x"] >= 3.0)
+                    pct_txt = f"Atk Zone: {in_zone/len(rows)*100:.0f}%"
             elif label == "Defender":
-                in_zone = sum(1 for r in rows if r["x"] <= 2.0)
-                pct_txt = f"Defend Zone: {in_zone/len(rows)*100:.0f}%"
+                def_rows = [r for r in rows if r.get("phase") == "defend"]
+                if def_rows:
+                    in_zone = sum(1 for r in def_rows if r["x"] <= 2.0)
+                    pct_txt = f"Def Zone(def phase): {in_zone/len(def_rows)*100:.0f}%"
+                else:
+                    in_zone = sum(1 for r in rows if r["x"] <= 2.0)
+                    pct_txt = f"Def Zone: {in_zone/len(rows)*100:.0f}%"
             else:
                 xs = [r["x"] for r in rows]
                 travel = sum(abs(xs[i]-xs[i-1]) for i in range(1, len(xs)))
@@ -461,9 +547,9 @@ def run(args) -> int:
     print(f"[Demo] 패턴 라이브러리: { {_ROLE_KO.get(r,r): n for r,n in n_roles.items()} }")
 
     sim: dict[int, PatternPlayer] = {
-        1: PatternPlayer(pat_lib.get("technician",    {}), "A", (1.5, 1.0), seed=1),
-        2: PatternPlayer(pat_lib.get("defender",      {}), "A", (0.8, 3.0), seed=2),
-        3: PatternPlayer(pat_lib.get("main_attacker", {}), "A", (2.8, 5.0), seed=3),
+        1: PatternPlayer(pat_lib.get("technician",    {}), "A", (1.5, 1.0), seed=1, role_name="technician"),
+        2: PatternPlayer(pat_lib.get("defender",      {}), "A", (0.8, 3.0), seed=2, role_name="defender"),
+        3: PatternPlayer(pat_lib.get("main_attacker", {}), "A", (2.8, 5.0), seed=3, role_name="main_attacker"),
     }
 
     # 게임 페이즈 사이클: attack(9s) → transition(2s) → defend(8s) → transition(2s)
@@ -514,9 +600,12 @@ def run(args) -> int:
         if fi >= _WARMUP_FRAMES:
             for pid, (x, y) in pos.items():
                 if pid in _TEAM_A_PIDS:
-                    _pos_log.append({"pid": pid,
-                                      "role": sim[pid].role or _PLAYER_ROLES.get(pid, ""),
-                                      "x": x, "y": y})
+                    _pos_log.append({
+                        "pid":   pid,
+                        "role":  sim[pid].role or _PLAYER_ROLES.get(pid, ""),
+                        "phase": cur_phase,
+                        "x": x, "y": y,
+                    })
 
         dets = [
             Detection(
@@ -588,6 +677,9 @@ def run(args) -> int:
         cv2.rectangle(birdeye_half, (6, 4), (6 + len(ph_txt) * 10 + 8, 24), (0, 0, 0), -1)
         cv2.putText(birdeye_half, ph_txt, (10, 19),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.55, ph_clr, 2, cv2.LINE_AA)
+
+        # 실시간 구역 점유 HUD (우상단)
+        _draw_zone_hud(birdeye_half, pos)
 
         _draw_status_bar(birdeye_half, sim)
 

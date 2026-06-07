@@ -60,6 +60,7 @@ class MatchRecorder:
             "timestamp", "frame_idx", "track_id",
             "x_m", "y_m",
             "bbox_x1", "bbox_y1", "bbox_x2", "bbox_y2", "confidence",
+            "role",
         ])
         self._start_time = time.time()
         print(f"[Recorder] ● 녹화 시작 → {self.match_dir}")
@@ -69,8 +70,14 @@ class MatchRecorder:
         combined_frame: np.ndarray,
         tracks: list,
         birdeye: Optional[np.ndarray] = None,
+        track_roles: dict[int, str] | None = None,
     ) -> None:
-        """프레임 + 위치 데이터 기록."""
+        """프레임 + 위치 데이터 기록.
+
+        Parameters
+        ----------
+        track_roles : {track_id: role_str} 매핑. 없으면 빈 문자열로 기록.
+        """
         if self._video_writer is not None:
             self._video_writer.write(combined_frame)
 
@@ -81,6 +88,7 @@ class MatchRecorder:
             ts = time.time() - self._start_time
             foot_px = np.array([t.foot_point for t in tracks], dtype=np.float32)
             foot_m = pixel_to_court(foot_px, self.calib)
+            roles = track_roles or {}
             for t, m in zip(tracks, foot_m):
                 self._csv_writer.writerow([
                     f"{ts:.3f}", self._frame_count, t.track_id,
@@ -88,6 +96,7 @@ class MatchRecorder:
                     f"{t.bbox[0]:.1f}", f"{t.bbox[1]:.1f}",
                     f"{t.bbox[2]:.1f}", f"{t.bbox[3]:.1f}",
                     f"{t.confidence:.3f}",
+                    roles.get(t.track_id, ""),
                 ])
 
         self._frame_count += 1
