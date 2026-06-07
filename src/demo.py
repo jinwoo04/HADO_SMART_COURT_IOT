@@ -93,11 +93,18 @@ _PLAYER_ROLES = {
 
 
 # ---------- 패턴 라이브러리 로드 ----------
-def _load_pattern_library() -> dict[str, dict[str, list[list[dict]]]]:
-    """CSV → {role: {context: [[step_dict, ...], ...]}} 구조로 로드."""
+def _load_pattern_library(team: str = "A") -> dict[str, dict[str, list[list[dict]]]]:
+    """CSV → {role: {context: [[step_dict, ...], ...]}} 구조로 로드.
+
+    team 필터: team A 패턴(x=0-5m)만 사용.
+    team B 패턴(x=5-10m)이 포함되면 _load_step() 클램핑으로
+    모든 선수가 x=4.9m(경계선)에 몰리는 버그 발생.
+    """
     if not _CSV_PATH.exists():
         return {}
     rows = list(csv.DictReader(_CSV_PATH.open(encoding="utf-8")))
+    rows = [r for r in rows if r.get("team", "A") == team]
+
     by_pat: dict[int, list[dict]] = defaultdict(list)
     for row in rows:
         by_pat[int(row["pattern_id"])].append(row)
@@ -382,17 +389,18 @@ def _generate_demo_heatmap(
             cv2.addWeighted(overlay, 0.3, colored, 0.7, 0, colored)
             cv2.rectangle(colored, (px0, 0), (px1, H), (255, 255, 100), 2)
 
-        # 구역 점유율 계산
+        # 구역 점유율 계산 (역할별 기준 구역 내 체류 비율)
         if rows:
-            in_zone = 0
             if label == "Attacker":
                 in_zone = sum(1 for r in rows if r["x"] >= 3.0)
+                pct_txt = f"Attack Zone: {in_zone/len(rows)*100:.0f}%"
             elif label == "Defender":
                 in_zone = sum(1 for r in rows if r["x"] <= 2.0)
+                pct_txt = f"Defend Zone: {in_zone/len(rows)*100:.0f}%"
             else:
-                in_zone = len(rows)
-            pct = in_zone / len(rows) * 100
-            pct_txt = f"Zone: {pct:.0f}%"
+                xs = [r["x"] for r in rows]
+                travel = sum(abs(xs[i]-xs[i-1]) for i in range(1, len(xs)))
+                pct_txt = f"Travel: {travel:.0f}m"
             cv2.putText(colored, pct_txt, (6, H - 8),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 200), 1, cv2.LINE_AA)
 
