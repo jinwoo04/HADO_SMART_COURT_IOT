@@ -117,6 +117,60 @@ def _compute_statistics(csv_path: Path, calib: Calibration) -> dict:
     }
 
 
+_ROLE_LABEL: dict[int, str] = {
+    1: "Technician A",
+    2: "Defender A",
+    3: "Attacker A",
+    4: "Attacker B",
+    5: "Defender B",
+    6: "Technician B",
+}
+
+_ROLE_COLOR: dict[int, tuple[int, int, int]] = {
+    1: cv2.COLORMAP_OCEAN,
+    2: cv2.COLORMAP_WINTER,
+    3: cv2.COLORMAP_HOT,
+    4: cv2.COLORMAP_AUTUMN,
+    5: cv2.COLORMAP_COOL,
+    6: cv2.COLORMAP_SUMMER,
+}
+
+
+def _make_one_heatmap(
+    rows: list[dict],
+    W: int,
+    H: int,
+    calib: Calibration,
+    px_per_m: float,
+    colormap: int = cv2.COLORMAP_JET,
+    label: str = "",
+) -> np.ndarray:
+    heatmap = np.zeros((H, W), dtype=np.float32)
+    for r in rows:
+        px_i = int(np.clip(r["x"] * px_per_m, 0, W - 1))
+        py_i = int(np.clip(r["y"] * px_per_m, 0, H - 1))
+        heatmap[py_i, px_i] += 1.0
+
+    if heatmap.max() > 0:
+        heatmap = cv2.GaussianBlur(heatmap, (31, 31), 0)
+        heatmap /= heatmap.max()
+
+    colored = cv2.applyColorMap((heatmap * 255).astype(np.uint8), colormap)
+
+    court = render_court_birdeye(calib, px_per_m=px_per_m)
+    court_r = cv2.resize(court, (W, H))
+    gray = cv2.cvtColor(court_r, cv2.COLOR_BGR2GRAY)
+    _, line_mask = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY)
+    colored[line_mask > 0] = (220, 220, 220)
+
+    if label:
+        cv2.putText(colored, label, (6, 18),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 1, cv2.LINE_AA)
+        cv2.putText(colored, label, (5, 17),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 0), 1, cv2.LINE_AA)
+    return colored
+
+
 def _generate_heatmap(
     csv_path: Path,
     calib: Calibration,
@@ -130,28 +184,31 @@ def _generate_heatmap(
     W = int(calib.court_width_m * px_per_m)
     H = int(calib.court_height_m * px_per_m)
 
-    heatmap = np.zeros((H, W), dtype=np.float32)
-    for r in rows:
-        px = int(np.clip(r["x"] * px_per_m, 0, W - 1))
-        py = int(np.clip(r["y"] * px_per_m, 0, H - 1))
-        heatmap[py, px] += 1.0
-
-    heatmap = cv2.GaussianBlur(heatmap, (31, 31), 0)
-    if heatmap.max() > 0:
-        heatmap /= heatmap.max()
-
-    heatmap_u8 = (heatmap * 255).astype(np.uint8)
-    colored = cv2.applyColorMap(heatmap_u8, cv2.COLORMAP_JET)
-
-    court = render_court_birdeye(calib, px_per_m=px_per_m)
-    court_r = cv2.resize(court, (W, H))
-    gray = cv2.cvtColor(court_r, cv2.COLOR_BGR2GRAY)
-    _, line_mask = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY)
-    colored[line_mask > 0] = (220, 220, 220)
-
-    out_path = out_dir / "heatmap.png"
-    cv2.imwrite(str(out_path), colored)
+    # 전체 합산 히트맵
+    all_panel = _make_one_heatmap(rows, W, H, calib, px_per_m,
+                                   cv2.COLORMAP_JET, "All players")
+    cv2.imwrite(str(out_dir / "heatmap.png"), all_panel)
     print(f"[Analyzer] heatmap.png 저장")
+
+    # 선수별 히트맵 → 가로로 이어붙인 heatmap_by_player.png
+    by_track: dict[int, list[dict]] = {}
+    for r in rows:
+        by_track.setdefault(r["track_id"], []).append(r)
+
+    panels = []
+    for tid in sorted(by_track):
+        label = _ROLE_LABEL.get(tid, f"Player #{tid}")
+        cmap  = _ROLE_COLOR.get(tid, cv2.COLORMAP_JET)
+        panel = _make_one_heatmap(by_track[tid], W, H, calib, px_per_m, cmap, label)
+        # 얇은 흰 구분선
+        divider = np.full((H, 3, 3), 200, dtype=np.uint8)
+        panels.extend([panel, divider])
+
+    if panels:
+        combined = np.hstack(panels[:-1])  # 마지막 구분선 제거
+        out_path = out_dir / "heatmap_by_player.png"
+        cv2.imwrite(str(out_path), combined)
+        print(f"[Analyzer] heatmap_by_player.png 저장 ({len(by_track)}명 패널)")
 
 
 def _print_summary(stats: dict) -> None:

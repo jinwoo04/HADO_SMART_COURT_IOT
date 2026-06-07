@@ -93,8 +93,8 @@ _PLAYER_ROLES = {
 
 
 # ---------- 패턴 라이브러리 로드 ----------
-def _load_pattern_library() -> dict[str, list[list[dict]]]:
-    """CSV → role별 패턴 딕셔너리 {role: [[step_dict, ...], ...]}."""
+def _load_pattern_library() -> dict[str, dict[str, list[list[dict]]]]:
+    """CSV → {role: {context: [[step_dict, ...], ...]}} 구조로 로드."""
     if not _CSV_PATH.exists():
         return {}
     rows = list(csv.DictReader(_CSV_PATH.open(encoding="utf-8")))
@@ -103,12 +103,16 @@ def _load_pattern_library() -> dict[str, list[list[dict]]]:
         by_pat[int(row["pattern_id"])].append(row)
     for steps in by_pat.values():
         steps.sort(key=lambda r: int(r.get("step", 0)))
-    by_role: dict[str, list[list[dict]]] = defaultdict(list)
+
+    # role → context → [patterns]
+    result: dict[str, dict[str, list[list[dict]]]] = {}
     for steps in by_pat.values():
         role = steps[0].get("role", "")
-        if role:
-            by_role[role].append(steps)
-    return dict(by_role)
+        ctx  = steps[0].get("context", "attack")
+        if not role:
+            continue
+        result.setdefault(role, {}).setdefault(ctx, []).append(steps)
+    return result
 
 
 # ---------- PatternPlayer ----------
@@ -126,42 +130,42 @@ def _sway(frame: int, pid: int) -> tuple[float, float]:
 class PatternPlayer:
     """CSV 패턴 데이터로 단일 선수 움직임을 재생하는 시뮬레이터.
 
-    각 스텝의 이동을 '상대 델타'로 처리해 패턴 간 이음새가 매끄럽도록 한다.
-    Team B는 x축을 코트 중앙(5.0m)에 대해 미러링한다.
+    - 절대 좌표(to_x, to_y)로 목표 위치를 결정해 drift 방지
+    - context(attack/defend/transition)에 맞는 패턴만 선택
+    - Team B는 x축을 5.0m 기준으로 미러링
     """
 
     def __init__(
         self,
-        patterns: list[list[dict]],
+        patterns_by_ctx: dict[str, list[list[dict]]],
         team: str,
         start: tuple[float, float],
         seed: int = 0,
     ):
         self._team = team
         self._pos: list[float] = list(start)
-        self._pat_idx = 0
-        self._step_idx = 0
-        self._frame_in_step = 0
-        self._step_start: list[float] = list(start)
-        self._step_end: list[float] = list(start)
-        self._fpt = _DEFAULT_FPT       # frames per step (이번 스텝)
+        self._context = "attack"
+        self._rng = random.Random(seed)
+        self._patterns_by_ctx = patterns_by_ctx
         self._intent = ""
         self._role = ""
-        self._frame_total = 0          # 전체 경과 프레임 (sway용)
+        self._frame_total = 0
 
-        # 패턴이 없으면 제자리 대기용 더미 생성
-        if not patterns:
-            dummy = [{"from_x": str(start[0]), "from_y": str(start[1]),
-                      "to_x":   str(start[0]), "to_y":   str(start[1]),
-                      "intent": "", "role": ""}]
-            self._pats = [dummy]
-        else:
-            self._pats = patterns[:]
-            random.Random(seed).shuffle(self._pats)
+        self._step_start: list[float] = list(start)
+        self._step_end: list[float] = list(start)
+        self._fpt = _DEFAULT_FPT
+        self._frame_in_step = 0
+        self._cur_pattern: list[dict] = []
+        self._step_idx = 0
 
-        self._load_step()
+        self._pick_new_pattern()
 
-    # ── 공개 프로퍼티 ────────────────────────────────────────────────
+    # ── 공개 인터페이스 ──────────────────────────────────────────────
+    def set_context(self, ctx: str) -> None:
+        if ctx != self._context:
+            self._context = ctx
+            self._pick_new_pattern()
+
     @property
     def intent(self) -> str:
         return self._intent
@@ -175,40 +179,46 @@ class PatternPlayer:
         return (self._pos[0], self._pos[1])
 
     # ── 내부 ─────────────────────────────────────────────────────────
-    def _current_step(self) -> dict:
-        pat = self._pats[self._pat_idx % len(self._pats)]
-        return pat[self._step_idx % len(pat)]
+    def _pick_new_pattern(self) -> None:
+        candidates = self._patterns_by_ctx.get(self._context, [])
+        if not candidates:
+            # context 매칭 없으면 전체 fallback
+            candidates = [p for pats in self._patterns_by_ctx.values() for p in pats]
+        if not candidates:
+            self._cur_pattern = [{"from_x": str(self._pos[0]), "from_y": str(self._pos[1]),
+                                   "to_x":  str(self._pos[0]), "to_y":  str(self._pos[1]),
+                                   "intent": "", "role": ""}]
+        else:
+            self._cur_pattern = self._rng.choice(candidates)
+        self._step_idx = 0
+        self._load_step()
 
     def _load_step(self) -> None:
-        """현재 스텝의 목표 위치를 현재 위치 기준 상대 델타로 계산."""
-        step = self._current_step()
+        """현재 스텝의 절대 목표 좌표를 계산. Team B는 x 미러링."""
+        step = self._cur_pattern[self._step_idx % len(self._cur_pattern)]
         self._intent = step.get("intent", "")
         self._role   = step.get("role", "")
 
-        dx = float(step["to_x"]) - float(step["from_x"])
-        dy = float(step["to_y"]) - float(step["from_y"])
+        # 절대 좌표 사용 (델타 누적 X)
+        tx = float(step["to_x"])
+        ty = float(step["to_y"])
         if self._team == "B":
-            dx = -dx   # x축 미러
+            tx = _COURT_W - tx   # x축 미러
 
-        tx = self._pos[0] + dx
-        ty = self._pos[1] + dy
-
-        # 진영 클리핑
         if self._team == "A":
             tx = max(0.1, min(4.9, tx))
         else:
             tx = max(5.1, min(9.9, tx))
         ty = max(0.1, min(5.9, ty))
 
-        self._step_start = self._pos[:]
-        self._step_end   = [tx, ty]
-        self._fpt        = _FRAMES_PER_INTENT.get(self._intent, _DEFAULT_FPT)
+        self._step_start    = self._pos[:]
+        self._step_end      = [tx, ty]
+        self._fpt           = _FRAMES_PER_INTENT.get(self._intent, _DEFAULT_FPT)
         self._frame_in_step = 0
 
     def update(self) -> tuple[float, float]:
-        """프레임 한 칸 전진 후 현재 위치 반환."""
         t = _smooth(self._frame_in_step / max(1, self._fpt - 1))
-        sx, sy = self._sway_now()
+        sx, sy = _sway(self._frame_total, id(self) % 13)
         self._pos = [
             self._step_start[0] + (self._step_end[0] - self._step_start[0]) * t + sx,
             self._step_start[1] + (self._step_end[1] - self._step_start[1]) * t + sy,
@@ -217,19 +227,14 @@ class PatternPlayer:
         self._frame_total   += 1
 
         if self._frame_in_step >= self._fpt:
-            # 스텝 완료 → 목표 위치 확정 후 다음 스텝으로
             self._pos = self._step_end[:]
             self._step_idx += 1
-            pat = self._pats[self._pat_idx % len(self._pats)]
-            if self._step_idx >= len(pat):
-                self._step_idx = 0
-                self._pat_idx += 1
-            self._load_step()
+            if self._step_idx >= len(self._cur_pattern):
+                self._pick_new_pattern()
+            else:
+                self._load_step()
 
         return (self._pos[0], self._pos[1])
-
-    def _sway_now(self) -> tuple[float, float]:
-        return _sway(self._frame_total, id(self) % 13)
 
 
 # ---------- 버드아이뷰 상태 바 ----------
@@ -298,6 +303,124 @@ def _court_to_bbox(xm: float, ym: float, calib) -> np.ndarray:
     return np.array([fx - w_box / 2, fy - h_box, fx + w_box / 2, fy], dtype=np.float32)
 
 
+# ---------- Role별 히트맵 ----------
+_ROLE_CMAPS = {
+    "main_attacker": cv2.COLORMAP_HOT,
+    "technician":    cv2.COLORMAP_OCEAN,
+    "defender":      cv2.COLORMAP_WINTER,
+}
+_ROLE_LABEL_KO = {
+    "main_attacker": "Attacker",
+    "technician":    "Technician",
+    "defender":      "Defender",
+}
+_TEAM_COLOR = {
+    "A": (100, 255, 150),
+    "B": (100, 150, 255),
+}
+
+
+def _generate_demo_heatmap(
+    pos_log: list[dict],
+    calib,
+    px_per_m: int,
+    out_dir: Path,
+) -> None:
+    """팀A 선수들의 포지션 로그로 role별 히트맵 생성 (x=0–5m 반쪽 확대)."""
+    # 팀A 반쪽만 표시: x=0–5m → W_half 폭
+    W_half = int(5.0 * px_per_m)
+    H = int(_COURT_H * px_per_m)
+    BLUR = 41  # 넓은 blur로 zone이 자연스럽게 표시
+
+    from src.visualizer import render_court_birdeye as _rcb
+
+    def _one(rows: list[dict], cmap: int, label: str) -> np.ndarray:
+        hm = np.zeros((H, W_half), dtype=np.float32)
+        for r in rows:
+            px_i = int(np.clip(r["x"] * px_per_m, 0, W_half - 1))
+            py_i = int(np.clip(r["y"] * px_per_m, 0, H - 1))
+            hm[py_i, px_i] += 1.0
+        if hm.max() > 0:
+            hm = cv2.GaussianBlur(hm, (BLUR, BLUR), 0)
+            hm /= hm.max()
+        colored = cv2.applyColorMap((hm * 255).astype(np.uint8), cmap)
+
+        # 코트 라인 오버레이 (팀A 반쪽 crop)
+        court_full = _rcb(calib, px_per_m=px_per_m)
+        court_crop = court_full[:H, :W_half]
+        gray = cv2.cvtColor(court_crop, cv2.COLOR_BGR2GRAY)
+        _, mask = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY)
+        colored[mask > 0] = (200, 200, 200)
+
+        # 역할 구역선: 1선(x=1.5), 2선(x=3.0), 레인(y=2,4)
+        for xz in [1.5, 3.0]:
+            cv2.line(colored, (int(xz*px_per_m), 0), (int(xz*px_per_m), H),
+                     (200, 200, 80), 1, cv2.LINE_AA)
+        for yz in [2.0, 4.0]:
+            cv2.line(colored, (0, int(yz*px_per_m)), (W_half, int(yz*px_per_m)),
+                     (80, 200, 80), 1, cv2.LINE_AA)
+
+        # 역할별 기본 구역 강조 (반투명 사각형)
+        zone_map = {
+            "Technician": (0.0, 5.0),    # 전체 폭 (side-to-side)
+            "Attacker":   (3.0, 5.0),    # 전방 2m
+            "Defender":   (0.0, 2.0),    # 후방 2m
+        }
+        if label in zone_map:
+            zx0, zx1 = zone_map[label]
+            px0, px1 = int(zx0*px_per_m), min(W_half-1, int(zx1*px_per_m))
+            overlay = colored.copy()
+            cv2.rectangle(overlay, (px0, 0), (px1, H), (255, 255, 100), 2)
+            cv2.addWeighted(overlay, 0.3, colored, 0.7, 0, colored)
+            cv2.rectangle(colored, (px0, 0), (px1, H), (255, 255, 100), 2)
+
+        # 구역 점유율 계산
+        if rows:
+            in_zone = 0
+            if label == "Attacker":
+                in_zone = sum(1 for r in rows if r["x"] >= 3.0)
+            elif label == "Defender":
+                in_zone = sum(1 for r in rows if r["x"] <= 2.0)
+            else:
+                in_zone = len(rows)
+            pct = in_zone / len(rows) * 100
+            pct_txt = f"Zone: {pct:.0f}%"
+            cv2.putText(colored, pct_txt, (6, H - 8),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 200), 1, cv2.LINE_AA)
+
+        # 라벨
+        cv2.putText(colored, label, (6, 22),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 2, cv2.LINE_AA)
+        cv2.putText(colored, label, (6, 22),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 0, 0), 1, cv2.LINE_AA)
+        # 좌표 힌트
+        cv2.putText(colored, "0m", (4, H - 22 if rows else H - 6),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.4, (180, 180, 180), 1)
+        cv2.putText(colored, "5m(center)", (W_half - 72, H - 22 if rows else H - 6),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.4, (180, 180, 180), 1)
+        return colored
+
+    by_role: dict[str, list[dict]] = {}
+    for r in pos_log:
+        by_role.setdefault(r["role"], []).append(r)
+
+    roles_order = ["technician", "main_attacker", "defender"]
+    sep = np.full((H, 6, 3), 60, dtype=np.uint8)
+    panels = []
+    for role in roles_order:
+        rows = by_role.get(role, [])
+        cmap  = _ROLE_CMAPS.get(role, cv2.COLORMAP_JET)
+        label = _ROLE_LABEL_KO.get(role, role)
+        panels.append(_one(rows, cmap, label))
+        panels.append(sep.copy())
+
+    if panels:
+        combined = np.hstack(panels[:-1])
+        out_path = out_dir / "heatmap_role.png"
+        cv2.imwrite(str(out_path), combined)
+        print(f"[Demo] 포지션 히트맵: {out_path}  ({len(pos_log)}개 로그포인트)")
+
+
 # ---------- 메인 루프 ----------
 def run(args) -> int:
     config = _load_config()
@@ -320,18 +443,28 @@ def run(args) -> int:
 
     # PatternPlayer 초기화
     pat_lib = _load_pattern_library()
-    n_roles = {r: len(v) for r, v in pat_lib.items()}
+    n_roles = {r: sum(len(v) for v in ctxs.values()) for r, ctxs in pat_lib.items()}
     print(f"[Demo] 패턴 라이브러리: { {_ROLE_KO.get(r,r): n for r,n in n_roles.items()} }")
 
     # 초기 위치: 양팀 3레인 분산 진형
     sim: dict[int, PatternPlayer] = {
-        1: PatternPlayer(pat_lib.get("technician",    []), "A", (1.8, 1.5), seed=1),
-        2: PatternPlayer(pat_lib.get("defender",      []), "A", (1.0, 4.5), seed=2),
-        3: PatternPlayer(pat_lib.get("main_attacker", []), "A", (2.5, 3.0), seed=3),
-        4: PatternPlayer(pat_lib.get("main_attacker", []), "B", (7.5, 3.0), seed=4),
-        5: PatternPlayer(pat_lib.get("defender",      []), "B", (9.0, 1.5), seed=5),
-        6: PatternPlayer(pat_lib.get("technician",    []), "B", (8.2, 4.5), seed=6),
+        1: PatternPlayer(pat_lib.get("technician",    {}), "A", (1.8, 1.5), seed=1),
+        2: PatternPlayer(pat_lib.get("defender",      {}), "A", (1.0, 4.5), seed=2),
+        3: PatternPlayer(pat_lib.get("main_attacker", {}), "A", (2.5, 3.0), seed=3),
+        4: PatternPlayer(pat_lib.get("main_attacker", {}), "B", (7.5, 3.0), seed=4),
+        5: PatternPlayer(pat_lib.get("defender",      {}), "B", (9.0, 1.5), seed=5),
+        6: PatternPlayer(pat_lib.get("technician",    {}), "B", (8.2, 4.5), seed=6),
     }
+
+    # 게임 페이즈 사이클: attack(9s) → transition(2s) → defend(8s) → transition(2s)
+    _PHASE_CYCLE = [
+        ("attack",     270),
+        ("transition", 60),
+        ("defend",     240),
+        ("transition", 60),
+    ]
+    _phase_idx   = 0
+    _phase_frame = 0
 
     out_dir  = PROJECT_ROOT / "data"
     out_dir.mkdir(exist_ok=True)
@@ -346,10 +479,31 @@ def run(args) -> int:
     if not args.headless:
         cv2.namedWindow("HADO Demo", cv2.WINDOW_NORMAL)
 
+    # 포지션 로그 (role별 히트맵용) — 팀A만, 워밍업 300프레임 제외
+    _pos_log: list[dict] = []
+    _TEAM_A_PIDS = {1, 2, 3}
+    _WARMUP_FRAMES = 300
+
     preview_saved = False
     for fi in range(args.frames):
+        # ── 게임 페이즈 전환 ──────────────────────────────────────
+        cur_phase, phase_dur = _PHASE_CYCLE[_phase_idx]
+        _phase_frame += 1
+        if _phase_frame >= phase_dur:
+            _phase_frame = 0
+            _phase_idx   = (_phase_idx + 1) % len(_PHASE_CYCLE)
+            cur_phase, _ = _PHASE_CYCLE[_phase_idx]
+            for p in sim.values():
+                p.set_context(cur_phase)
+
         # ── 선수 위치 업데이트 (PatternPlayer 1회 호출) ──────────
         pos = {pid: p.update() for pid, p in sim.items()}
+        if fi >= _WARMUP_FRAMES:
+            for pid, (x, y) in pos.items():
+                if pid in _TEAM_A_PIDS:
+                    _pos_log.append({"pid": pid,
+                                      "role": sim[pid].role or _PLAYER_ROLES.get(pid, ""),
+                                      "x": x, "y": y})
 
         dets = [
             Detection(
@@ -370,6 +524,7 @@ def run(args) -> int:
                 role=_PLAYER_ROLES.get(t.track_id, ""),
             )
             for t in tracks
+            if t.track_id in pos
         ]
         advices = tactic_engine.analyze(player_states)
 
@@ -407,6 +562,8 @@ def run(args) -> int:
     if not args.headless:
         cv2.destroyAllWindows()
     print(f"[Demo] 완료 — {vid_path}")
+
+    _generate_demo_heatmap(_pos_log, calib, px_per_m, out_dir)
     return 0
 
 
