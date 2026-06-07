@@ -50,81 +50,147 @@ def draw_guide_on_birdeye(
     advices: List[TacticAdvice],
     px_per_m: int = 100,
 ) -> np.ndarray:
-    """Bird-eye view에 전술 조언 화살표 표시.
+    """전술 분석 결과를 텍스트 패널로만 표시 (코트 위 화살표 없음).
 
-    화살표 의미
-    -----------
-    - 출발점(●) : 선수 현재 위치
-    - 화살표     : AI가 권장하는 이동 방향
-    - X 마크     : 권장 목표 위치
-    - 색상       : 긴급도 (연두=유지, 노랑=권장, 빨강=즉시이동)
-    - 라벨       : 발화된 규칙명 (예: 갭 공격, 측면 회피)
+    - 코트 위는 선수 이동방향/의도만 표현 (draw_player_overlays 담당)
+    - 전술 규칙 발동 내용은 우하단 텍스트 패널로 분리해 가독성 확보
     """
     out = court_img.copy()
-    h, w = out.shape[:2]
-    drawn = 0
 
-    for a in advices:
-        if a.distance_m < 0.15:
-            continue
-
-        color = URGENCY_COLOR.get(a.urgency, (200, 200, 200))
-
-        cx = int(a.current_pos[0] * px_per_m)
-        cy = int(a.current_pos[1] * px_per_m)
-        tx = max(4, min(w - 4, int(a.target_pos[0] * px_per_m)))
-        ty = max(4, min(h - 4, int(a.target_pos[1] * px_per_m)))
-
-        # 현재 위치 작은 원
-        cv2.circle(out, (cx, cy), 5, color, -1, cv2.LINE_AA)
-        # 화살표
-        cv2.arrowedLine(out, (cx, cy), (tx, ty), color,
-                        thickness=2, tipLength=0.3, line_type=cv2.LINE_AA)
-        # 목표 위치 X 마크
-        cv2.drawMarker(out, (tx, ty), color,
-                       markerType=cv2.MARKER_TILTED_CROSS,
-                       markerSize=16, thickness=2)
-        # HIGH: 목표 강조 원
-        if a.urgency == "HIGH":
-            cv2.circle(out, (tx, ty), 20, color, 2, cv2.LINE_AA)
-
-        # 규칙 라벨 (목표 위치 옆)
-        rule_text = _RULE_KO.get(a.rule, a.rule)
-        if rule_text:
-            lx = min(tx + 8, w - 60)
-            ly = max(ty - 6, 14)
-            _put_kr(out, rule_text, (lx, ly), 13, color)
-        drawn += 1
-
-    # 범례 — 실제로 화살표가 그려진 경우만
-    if drawn > 0:
-        _draw_legend(out)
+    active = [a for a in advices if a.distance_m >= 0.15]
+    if active:
+        _draw_tactic_panel(out, active)
     return out
 
 
-def _draw_legend(img: np.ndarray) -> None:
-    """화살표 범례 — 우하단 고정."""
+def _draw_tactic_panel(img: np.ndarray, advices: List[TacticAdvice]) -> None:
+    """우하단 전술 분석 패널 — 텍스트 전용."""
     h, w = img.shape[:2]
-    lw, lh = 148, 72
-    x0, y0 = w - lw - 6, h - lh - 6
+
+    # HIGH/MID 우선, 최대 4줄
+    sorted_adv = sorted(
+        advices,
+        key=lambda a: ({"HIGH": 0, "MID": 1, "LOW": 2}.get(a.urgency, 3), -a.distance_m),
+    )[:4]
+
+    line_h = 17
+    pad = 6
+    panel_h = pad + len(sorted_adv) * line_h + pad
+    panel_w = 190
+    x0 = w - panel_w - 6
+    y0 = h - panel_h - 6
+
     overlay = img.copy()
-    cv2.rectangle(overlay, (x0, y0), (x0 + lw, y0 + lh), (20, 20, 20), -1)
-    cv2.addWeighted(overlay, 0.7, img, 0.3, 0, img)
-    cv2.rectangle(img, (x0, y0), (x0 + lw, y0 + lh), (80, 80, 80), 1)
+    cv2.rectangle(overlay, (x0, y0), (x0 + panel_w, y0 + panel_h), (15, 15, 15), -1)
+    cv2.addWeighted(overlay, 0.75, img, 0.25, 0, img)
+    cv2.rectangle(img, (x0, y0), (x0 + panel_w, y0 + panel_h), (70, 70, 70), 1)
 
-    _put_kr(img, "AI 전술 조언", (x0 + 6, y0 + 4),  12, (200, 200, 200))
-    cv2.line(img, (x0 + 6, y0 + 20), (x0 + 142, y0 + 20), (60, 60, 60), 1)
+    _put_kr(img, "전술 분석", (x0 + pad, y0 + pad - 2), 11, (180, 180, 180))
+    cv2.line(img, (x0 + pad, y0 + pad + 10), (x0 + panel_w - pad, y0 + pad + 10),
+             (50, 50, 50), 1)
 
-    items = [
-        (URGENCY_COLOR["HIGH"], "즉시이동 (HIGH)"),
-        (URGENCY_COLOR["MID"],  "권장이동 (MID)"),
-        (URGENCY_COLOR["LOW"],  "위치유지 (LOW)"),
-    ]
-    for i, (clr, label) in enumerate(items):
-        iy = y0 + 26 + i * 15
-        cv2.arrowedLine(img, (x0 + 8, iy + 4), (x0 + 22, iy + 4),
-                        clr, 2, tipLength=0.4)
-        _put_kr(img, label, (x0 + 26, iy - 2), 11, clr)
+    for i, a in enumerate(sorted_adv):
+        color = URGENCY_COLOR.get(a.urgency, (200, 200, 200))
+        rule_text = _RULE_KO.get(a.rule, a.rule)
+        if not rule_text:
+            continue
+        iy = y0 + pad + 14 + i * line_h
+        # ● 색점
+        cv2.circle(img, (x0 + pad + 4, iy + 3), 4, color, -1, cv2.LINE_AA)
+        # 팀 + 규칙
+        txt = f"{'A' if a.team == 'A' else 'B'}팀 #{a.track_id}  {rule_text}"
+        _put_kr(img, txt, (x0 + pad + 14, iy - 1), 11, color)
+
+
+_INTENT_KO = {
+    "direct_attack":         "직접공격",
+    "feint_attack":          "페인트",
+    "cross_court":           "횡단",
+    "gap_exploit":           "공간공략",
+    "lure_attention":        "시선유도",
+    "create_space":          "공간창출",
+    "bait_inward":           "안쪽유도",
+    "support_fire":          "공격지원",
+    "shield_protect":        "수비쉴드",
+    "shield_attack_support": "쉴드지원",
+    "shield_feint":          "쉴드페인트",
+    "counter_shield":        "맞쉴드",
+}
+
+_INTENT_COLOR = {
+    "direct_attack":  (60, 80, 255),
+    "feint_attack":   (30, 140, 255),
+    "cross_court":    (80, 200, 255),
+    "gap_exploit":    (0, 200, 160),
+    "lure_attention": (180, 255, 80),
+    "create_space":   (120, 255, 120),
+    "bait_inward":    (200, 255, 100),
+    "support_fire":   (255, 200, 60),
+    "shield_protect": (255, 120, 60),
+    "shield_attack_support": (255, 160, 80),
+    "shield_feint":   (200, 100, 255),
+    "counter_shield": (160, 80, 255),
+}
+
+_TEAM_COLOR = {
+    "A": (100, 255, 150),
+    "B": (100, 150, 255),
+}
+
+# 선수별 고정 색 (BGR)
+_PLAYER_COLORS = [
+    (0, 100, 255), (255, 100, 0), (0, 200, 100),
+    (200, 0, 255), (0, 255, 255), (255, 0, 100),
+]
+
+
+def draw_player_overlays(
+    court_img: np.ndarray,
+    player_info: list[dict],
+    px_per_m: int = 100,
+) -> np.ndarray:
+    """선수별 이동방향 화살표 + 의도 뱃지를 bird-eye view 위에 그린다.
+
+    Parameters
+    ----------
+    player_info : list of dict, 각 원소:
+        pid         int    선수 고유 ID (1–6)
+        x, y        float  코트 좌표 (m)
+        vx, vy      float  이동방향 단위벡터
+        intent      str    현재 의도 키 (e.g. "direct_attack")
+        role_ko     str    역할 한글 (e.g. "어태커")
+    """
+    out = court_img.copy()
+    ARROW_LEN = int(0.6 * px_per_m)   # 화살표 길이 (0.6m 상당)
+
+    for p in player_info:
+        cx = int(p["x"] * px_per_m)
+        cy = int(p["y"] * px_per_m)
+        pid = p["pid"]
+        p_color = _PLAYER_COLORS[(pid - 1) % len(_PLAYER_COLORS)]
+        intent  = p.get("intent", "")
+        vx, vy  = p.get("vx", 0.0), p.get("vy", 0.0)
+
+        # 1) 이동방향 화살표 (선수 원에서 뻗는 굵은 화살표)
+        moving = abs(vx) > 0.05 or abs(vy) > 0.05
+        if moving:
+            ex = int(cx + vx * ARROW_LEN)
+            ey = int(cy + vy * ARROW_LEN)
+            h_img, w_img = out.shape[:2]
+            ex = max(2, min(w_img - 2, ex))
+            ey = max(2, min(h_img - 2, ey))
+            cv2.arrowedLine(out, (cx, cy), (ex, ey), p_color,
+                            thickness=3, tipLength=0.35, line_type=cv2.LINE_AA)
+
+        # 2) 의도 뱃지 — 선수 오른쪽 위
+        intent_ko  = _INTENT_KO.get(intent, "")
+        badge_color = _INTENT_COLOR.get(intent, (180, 180, 180))
+        if intent_ko:
+            bx = cx + 14
+            by = cy - 14
+            _put_kr(out, intent_ko, (bx, by), 12, badge_color)
+
+    return out
 
 
 def draw_guide_text_on_frame(

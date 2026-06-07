@@ -23,7 +23,7 @@ import numpy as np
 import yaml
 
 from src.detector import Detection
-from src.guide import draw_guide_on_birdeye
+from src.guide import draw_guide_on_birdeye, draw_player_overlays
 from src.homography import compute_homography, court_to_pixel
 from src.movement_model import MovementModel
 from src.tactic_engine import PlayerState, TacticEngine
@@ -161,6 +161,16 @@ class PatternPlayer:
         self._pick_new_pattern()
 
     # ── 공개 인터페이스 ──────────────────────────────────────────────
+    @property
+    def velocity_dir(self) -> tuple[float, float]:
+        """현재 스텝의 이동 방향 단위벡터. 정지 중이면 (0,0)."""
+        dx = self._step_end[0] - self._step_start[0]
+        dy = self._step_end[1] - self._step_start[1]
+        norm = math.hypot(dx, dy)
+        if norm < 1e-4:
+            return (0.0, 0.0)
+        return (dx / norm, dy / norm)
+
     def set_context(self, ctx: str) -> None:
         if ctx != self._context:
             self._context = ctx
@@ -239,22 +249,20 @@ class PatternPlayer:
 
 # ---------- 버드아이뷰 상태 바 ----------
 def _draw_status_bar(img: np.ndarray, sim: dict[int, PatternPlayer]) -> None:
-    """하단 바: 팀별 현재 의도 표시 (한글 PIL 렌더링)."""
+    """하단 바: 선수별 역할 + 현재 의도 표시."""
     from src.annotate import put_text_kr
 
     h, w = img.shape[:2]
-    cv2.rectangle(img, (0, h - 34), (w, h), (12, 12, 12), -1)
+    cv2.rectangle(img, (0, h - 22), (w, h), (12, 12, 12), -1)
 
-    def _label(pid: int) -> str:
+    parts = []
+    for pid in sorted(p for p in sim if p <= 3):
         p = sim[pid]
-        rk = _ROLE_KO.get(p.role, "?")
-        ik = _INTENT_KO.get(p.intent, p.intent or "-")
-        return f"{rk}:{ik}"
+        role_ko   = _ROLE_KO.get(p.role or _PLAYER_ROLES.get(pid, ""), "?")
+        intent_ko = _INTENT_KO.get(p.intent, "")
+        parts.append(f"#{pid} {role_ko}" + (f" [{intent_ko}]" if intent_ko else ""))
 
-    a_txt = "A팀  " + "  |  ".join(_label(pid) for pid in [1, 2, 3])
-    b_txt = "B팀  " + "  |  ".join(_label(pid) for pid in [4, 5, 6])
-    put_text_kr(img, a_txt, (6, h - 32), 13, (100, 255, 150))
-    put_text_kr(img, b_txt, (6, h - 17), 13, (100, 150, 255))
+    put_text_kr(img, "  ·  ".join(parts), (8, h - 19), 12, (140, 255, 180))
 
 
 # ---------- 카메라 배경 / bbox ----------
@@ -438,22 +446,16 @@ def run(args) -> int:
         print(f"[Demo] MovementModel: {movement_model.pattern_count}패턴 로드")
     for tid in range(1, 4):
         tactic_engine._team_assignment[tid] = "A"
-    for tid in range(4, 7):
-        tactic_engine._team_assignment[tid] = "B"
 
-    # PatternPlayer 초기화
+    # PatternPlayer 초기화 — 팀A 3명만 (발표용 단순화)
     pat_lib = _load_pattern_library()
     n_roles = {r: sum(len(v) for v in ctxs.values()) for r, ctxs in pat_lib.items()}
     print(f"[Demo] 패턴 라이브러리: { {_ROLE_KO.get(r,r): n for r,n in n_roles.items()} }")
 
-    # 초기 위치: 양팀 3레인 분산 진형
     sim: dict[int, PatternPlayer] = {
-        1: PatternPlayer(pat_lib.get("technician",    {}), "A", (1.8, 1.5), seed=1),
-        2: PatternPlayer(pat_lib.get("defender",      {}), "A", (1.0, 4.5), seed=2),
-        3: PatternPlayer(pat_lib.get("main_attacker", {}), "A", (2.5, 3.0), seed=3),
-        4: PatternPlayer(pat_lib.get("main_attacker", {}), "B", (7.5, 3.0), seed=4),
-        5: PatternPlayer(pat_lib.get("defender",      {}), "B", (9.0, 1.5), seed=5),
-        6: PatternPlayer(pat_lib.get("technician",    {}), "B", (8.2, 4.5), seed=6),
+        1: PatternPlayer(pat_lib.get("technician",    {}), "A", (1.5, 1.0), seed=1),
+        2: PatternPlayer(pat_lib.get("defender",      {}), "A", (0.8, 3.0), seed=2),
+        3: PatternPlayer(pat_lib.get("main_attacker", {}), "A", (2.8, 5.0), seed=3),
     }
 
     # 게임 페이즈 사이클: attack(9s) → transition(2s) → defend(8s) → transition(2s)
@@ -470,7 +472,10 @@ def run(args) -> int:
     out_dir.mkdir(exist_ok=True)
     vid_path = out_dir / "demo.mp4"
 
-    _sample = combine_views(np.zeros((_FRAME_H, _FRAME_W, 3), dtype=np.uint8), court_tmpl)
+    # 반쪽 코트 샘플로 출력 크기 계산
+    _half_w = int(5.0 * px_per_m)
+    _court_half = court_tmpl[:, :_half_w]
+    _sample = combine_views(np.zeros((_FRAME_H, _FRAME_W, 3), dtype=np.uint8), _court_half)
     out_h, out_w = _sample.shape[:2]
     writer = cv2.VideoWriter(str(vid_path), cv2.VideoWriter_fourcc(*"mp4v"),
                              30.0, (out_w, out_h))
@@ -511,7 +516,7 @@ def run(args) -> int:
                 x2=float(b[2]), y2=float(b[3]),
                 confidence=0.90,
             )
-            for pid in range(1, 7)
+            for pid in [1, 2, 3]
             for b in [_court_to_bbox(*pos[pid], calib)]
         ]
         tracks = tracker.update(dets)
@@ -537,10 +542,48 @@ def run(args) -> int:
             show_trajectory=True,
             trajectory_length=60,
         )
+        # 전술 분석 패널 (텍스트 전용)
         birdeye = draw_guide_on_birdeye(birdeye, advices, px_per_m=px_per_m)
-        _draw_status_bar(birdeye, sim)
 
-        combined = combine_views(cam_view, birdeye)
+        # 선수별 이동방향 화살표 + 의도 뱃지
+        p_overlays = [
+            {
+                "pid":     pid,
+                "x":       x,
+                "y":       y,
+                "vx":      sim[pid].velocity_dir[0],
+                "vy":      sim[pid].velocity_dir[1],
+                "intent":  sim[pid].intent,
+                "role_ko": _ROLE_KO.get(sim[pid].role or _PLAYER_ROLES.get(pid, ""), ""),
+            }
+            for pid, (x, y) in pos.items()
+        ]
+        birdeye = draw_player_overlays(birdeye, p_overlays, px_per_m=px_per_m)
+
+        # 팀A 반쪽(x=0–5m) 크롭 → 2배 확대
+        half_w = int(5.0 * px_per_m)
+        birdeye_half = birdeye[:, :half_w].copy()
+
+        # 센터라인 레이블
+        bh = birdeye_half.shape[0]
+        cv2.line(birdeye_half, (half_w - 2, 0), (half_w - 2, bh), (180, 180, 60), 2)
+        cv2.putText(birdeye_half, "CENTER LINE",
+                    (half_w - 95, 14), cv2.FONT_HERSHEY_SIMPLEX, 0.38,
+                    (180, 180, 60), 1, cv2.LINE_AA)
+
+        # 페이즈 레이블 (좌상단)
+        _PHASE_KO = {"attack": "ATTACK", "defend": "DEFEND", "transition": "TRANSITION"}
+        _PHASE_CLR = {"attack": (60, 80, 255), "defend": (255, 120, 60),
+                      "transition": (60, 200, 255)}
+        ph_txt = _PHASE_KO.get(cur_phase, cur_phase.upper())
+        ph_clr = _PHASE_CLR.get(cur_phase, (200, 200, 200))
+        cv2.rectangle(birdeye_half, (6, 4), (6 + len(ph_txt) * 10 + 8, 24), (0, 0, 0), -1)
+        cv2.putText(birdeye_half, ph_txt, (10, 19),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, ph_clr, 2, cv2.LINE_AA)
+
+        _draw_status_bar(birdeye_half, sim)
+
+        combined = combine_views(cam_view, birdeye_half)
         draw_hud(combined, fps=30.0, n_players=len(tracks))
         writer.write(combined)
 
