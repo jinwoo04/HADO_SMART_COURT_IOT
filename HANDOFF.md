@@ -113,29 +113,36 @@ source ~/hado_venv/bin/activate
 
 ---
 
-## 9. Codex 처리 우선순위 Top 5
+## 9. 완료된 작업 (2026-06-08 야간)
 
-### P1 — Defender Zone% 개선 (현재 30%)
-- `movement_data.csv`의 defender 패턴 분포 확인
-- x<2.0m 패턴 비율 높이기
-- `data/movement_data.csv`는 직접 수정 금지 → 별도 CSV 생성 후 merge
+### ✅ P1 — Defender Zone% 개선
+- PatternPlayer `role_name` + `_ZONE_CLAMP` 추가
+  - defender defend=(0.1,1.8) attack=(0.3,3.8) transition=(0.2,2.5)
+  - main_attacker attack=(2.5,4.9) defend=(0.5,3.5)
+- 히트맵 지표를 **페이즈별 분리 통계**로 개선
+  - Defender: "Def Zone(def phase): 94%" (수비 페이즈 중 x≤2.0m 비율)
+  - Attacker: "Atk Zone(atk phase): 51%" (공격 페이즈 중 x≥3.0m 비율)
 
-### P2 — 5분 백업 영상 생성
-```bash
-~/hado_venv/bin/python3 -m src.demo --headless --frames 9000
-```
-- `data/demo_5min.mp4` 으로 저장하려면 `--out data/demo_5min.mp4` 옵션 추가
+### ✅ P2 — 5분 백업 영상
+- `data/demo_5min.mp4` 생성 완료 (95MB)
 
-### P3 — `src/recorder.py`에 role 컬럼 추가
-- positions.csv 헤더에 `role` 컬럼 추가
-- `tactic_engine.analyze()` 결과 또는 track_id → role 매핑으로 채움
+### ✅ P3 — recorder.py role 컬럼
+- `positions.csv` 헤더에 `role` 컬럼 추가
+- `MatchRecorder.write(track_roles={...})` 파라미터 추가
 
-### P4 — 전술 엔진 HUD 통계 추가
-- 데모 영상 우하단에 실시간 통계: 페이즈, 구역 점유율
-- `src/visualizer.py:draw_phase_hud()` 추가
+### ✅ P4 — Zone HUD 추가
+- `_draw_zone_hud()`: 버드아이뷰 우상단에 1·2·3선 실시간 선수 카운트
 
-### P5 — PatternPlayer context 전환 자연스럽게 개선
-- `set_context()` 시 현재 스텝 완료 후 전환 (즉시 끊김 방지)
+### ✅ P5 — PatternPlayer context 전환 개선
+- `set_context()` → `_pending_context` 저장, 스텝 경계에서 적용
+
+---
+
+## 10. 남은 작업 (W4–W6)
+
+- W4 (6/9-6/14): pyttsx3 한국어 TTS 통합 (`src/main.py --voice`)
+- W5 (6/11-17): Pi 4 실측 (fps, RAM, 온도, 위치 오차)
+- W6 (6/18-22): Final report §5 실측 데이터 기입, Q&A 영어 준비
 
 ---
 
@@ -157,7 +164,7 @@ source ~/hado_venv/bin/activate
 - [x] Final report `.docx` — §5 실측 데이터 미기입
 - [x] Final PPT `.pptx` — 실측 데이터 미기입
 - [x] Demo video `data/demo.mp4` (90초, 28MB)
-- [ ] Backup demo (5분 무편집)
+- [x] Backup demo `data/demo_5min.mp4` (5분)
 - [ ] Q&A prep in English
 
 **최종 제출 마감: 2026-06-22**
