@@ -138,11 +138,34 @@ source ~/hado_venv/bin/activate
 
 ---
 
-## 10. 남은 작업 (W4–W6)
+## 10. 완료된 작업 (2026-06-08 야간 — W4 TTS)
 
-- W4 (6/9-6/14): pyttsx3 한국어 TTS 통합 (`src/main.py --voice`)
-- W5 (6/11-17): Pi 4 실측 (fps, RAM, 온도, 위치 오차)
-- W6 (6/18-22): Final report §5 실측 데이터 기입, Q&A 영어 준비
+### ✅ W4 — pyttsx3 한국어 TTS 통합
+- pyttsx3 설치 + requirements.txt 활성화
+- `VoiceGuide._select_korean_voice()`: Yuna(Mac) > ko-KR compact > ko 포함 우선순위
+- 발화 속도 180 → 200 wpm 개선
+- Pi4 설치 안내: `sudo apt install espeak-ng`
+- 테스트 추가: `test_voice_guide_korean_voice_selected` (pyttsx3 없으면 자동 skip)
+- 전체 테스트 159개 통과
+
+### ✅ W4 — demo --csv / player_id 분리
+- `demo.py --csv <path>`: 어노테이션 CSV 지정 가능
+- `_load_pattern_library(player_id=N)`: 특정 선수 패턴만 로드
+- 윈터컵 결승 2경기 어노테이션 3패턴 `movement_data.csv` 병합 완료
+
+---
+
+## 11. 남은 작업 (W5–W6)
+
+- W5 (6/11-17): Pi 4 실측 (fps, RAM, 온도, 위치 오차) → `docs/QA_PREP.md` [TODO] 채우기
+- W6 (6/18-22): Final report §5 실측 데이터 기입, Q&A 영어 리허설 5회
+
+Claude Code 최신 상세 인계:
+- `docs/CLAUDE_CODE_CONTINUATION_BRIEF_2026_06_08.md`
+  - 중간발표 3분 영어 대본
+  - Track A 발표용 설명 흐름
+  - Track B V4 player-only 모델 결과 및 실제 영상 smoke test
+  - 다음 Claude Code 작업 지시
 
 ---
 
@@ -152,14 +175,14 @@ source ~/hado_venv/bin/activate
 - [x] W1: Setup + calibration
 - [x] W2: YOLOv8 + tracking
 - [x] W3: Bird-eye view + 중간발표 ← 오늘
-- [ ] W4 (6/4-10): Tactic engine + voice
+- [x] W4 (6/4-10): Tactic engine + voice ← 완료
 - [ ] W5 (6/11-17): On-court testing + measurements
 - [ ] W6 (6/18-22): Final report + demo video + presentation
 ```
 
 ### 제출 체크리스트
 
-- [x] Code in `src/` + tests (158개 통과)
+- [x] Code in `src/` + tests (159개 통과)
 - [x] README.md
 - [x] Final report `.docx` — §5 실측 데이터 미기입
 - [x] Final PPT `.pptx` — 실측 데이터 미기입
