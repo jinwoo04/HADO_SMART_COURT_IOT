@@ -11,7 +11,9 @@
 from __future__ import annotations
 
 import argparse
+import os
 import time
+from pathlib import Path
 from statistics import mean, median, stdev
 
 import cv2
@@ -19,6 +21,28 @@ import numpy as np
 
 from src.camera import Camera
 from src.detector import PersonDetector
+
+try:
+    import psutil as _psutil
+    _PSUTIL = True
+except ImportError:
+    _PSUTIL = False
+
+
+def _ram_mb() -> float:
+    """현재 프로세스 RSS 메모리 (MB). psutil 없으면 0 반환."""
+    if _PSUTIL:
+        return _psutil.Process(os.getpid()).memory_info().rss / 1024 / 1024
+    return 0.0
+
+
+def _cpu_temp_c() -> float:
+    """Pi4 CPU 온도(°C). /sys/class/thermal 없으면 0 반환."""
+    try:
+        temp = Path("/sys/class/thermal/thermal_zone0/temp").read_text().strip()
+        return int(temp) / 1000.0
+    except (OSError, ValueError):
+        return 0.0
 
 
 def benchmark(
@@ -50,6 +74,8 @@ def benchmark(
 
     latencies = []
     person_counts = []
+    ram_samples: list[float] = []
+    temp_samples: list[float] = []
 
     try:
         # 워밍업
@@ -75,10 +101,16 @@ def benchmark(
 
             latencies.append((t1 - t0) * 1000)  # ms
             person_counts.append(len(dets))
+            ram_samples.append(_ram_mb())
+            temp_samples.append(_cpu_temp_c())
 
             if (i + 1) % 50 == 0:
                 avg = mean(latencies[-50:])
-                print(f"  [{i+1}/{n_frames}] 최근 50f 평균 지연: {avg:.1f} ms ({1000/avg:.1f} fps)")
+                ram_cur = ram_samples[-1]
+                temp_cur = temp_samples[-1]
+                temp_str = f", CPU {temp_cur:.1f}°C" if temp_cur > 0 else ""
+                print(f"  [{i+1}/{n_frames}] {avg:.1f} ms ({1000/avg:.1f} fps)"
+                      f"  RAM {ram_cur:.0f} MB{temp_str}")
 
         t_total = time.time() - t_start
     finally:
@@ -107,6 +139,15 @@ def benchmark(
     print(f"  Wall-clock FPS : {overall_fps:.2f}")
     print(f"  평균 감지 인원 : {mean(person_counts):.2f}")
 
+    # RAM
+    if ram_samples and max(ram_samples) > 0:
+        print(f"  피크 RAM       : {max(ram_samples):.0f} MB")
+        print(f"  평균 RAM       : {mean(ram_samples):.0f} MB")
+    # CPU 온도 (Pi4)
+    if temp_samples and max(temp_samples) > 0:
+        print(f"  최고 CPU 온도  : {max(temp_samples):.1f} °C")
+        print(f"  평균 CPU 온도  : {mean(temp_samples):.1f} °C")
+
     # 판정
     print("\n" + "-" * 60)
     if 1000 / avg_lat >= 15:
@@ -124,6 +165,8 @@ def benchmark(
         "p95_latency_ms": p95,
         "inference_fps": 1000 / avg_lat,
         "wall_fps": overall_fps,
+        "peak_ram_mb": max(ram_samples) if ram_samples else 0.0,
+        "peak_temp_c": max(temp_samples) if temp_samples else 0.0,
         "imgsz": imgsz,
         "model": model_path,
     }
