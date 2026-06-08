@@ -56,3 +56,5 @@ tactic:
   backline_depth_m: 2.0
   # R2 Coverage: 팀 y축 분산이 이 미만이면 커버 권고 (m)
   coverage_spread_min_m: 1.5
+  # R6 Lane Cover: 적의 이 비율 이상이 같은 레인에 집중 시 커버 지시 (0~1)
+  lane_concentration_ratio: 0.60
