@@ -14,7 +14,9 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
 
 # 가상환경 자동 활성화
-if [ -d "../hado_venv" ]; then
+if [ -d "$SCRIPT_DIR/hado_venv" ]; then
+    source "$SCRIPT_DIR/hado_venv/bin/activate"
+elif [ -d "../hado_venv" ]; then
     source ../hado_venv/bin/activate
 elif [ -d "$HOME/hado_venv" ]; then
     source "$HOME/hado_venv/bin/activate"
@@ -55,6 +57,9 @@ case "$CMD" in
         ;;
     action|action_demo)
         python -m src.action_demo "${@:2}"
+        ;;
+    measure-error|measure)
+        python -m src.measure_error "${@:2}"
         ;;
     match)
         python -m src.main --match "${@:2}"
