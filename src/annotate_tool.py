@@ -510,33 +510,52 @@ class AnnotateTool:
         return img
 
     def _render_hud(self) -> np.ndarray:
-        W = int(10.0 * _PX_M)
-        LINE_H = 22
-        lines: list[tuple[str, tuple[int,int,int]]] = [
-            (f"팀: {self.team}  패턴 {self.pattern_id - self.base_pid}개 저장  미기록: {len(self.saved)}행",
-             (0, 230, 100)),
+        W = int(5.0 * _PX_M)   # 반코트 버드아이와 동일 폭
+        LINE_H = 20
+        HDR = (0, 220, 120)   # 섹션 헤더 색
+        VAL = (200, 210, 200) # 일반 텍스트
+        DIM = (100, 110, 100) # 흐린 텍스트
+
+        # ── 현재 상태 ──
+        status_lines: list[tuple[str, tuple]] = [
+            (f"팀{self.team}  저장:{self.pattern_id - self.base_pid}패턴  대기:{len(self.saved)}행", HDR),
         ]
         for pid in (1, 2, 3):
             tr = self.traces[pid]
-            marker = "▶ " if pid == self.active_pid else "   "
-            lines.append((
-                f"{marker}P{pid} [{_ROLE_KO.get(tr.role,'?')} / "
-                f"{_CTX_KO.get(tr.context,'?')} / "
-                f"{_INTENT_KO.get(tr.intent,'?')}]  {len(tr.pts)}pts",
-                _P_COLOR[pid] if pid == self.active_pid else (160, 170, 160),
+            mk = "▶" if pid == self.active_pid else " "
+            status_lines.append((
+                f"{mk}P{pid} {_ROLE_KO.get(tr.role,'?')} | "
+                f"{_CTX_KO.get(tr.context,'?')} | "
+                f"{_INTENT_KO.get(tr.intent,'?')}  [{len(tr.pts)}점]",
+                _P_COLOR[pid] if pid == self.active_pid else (130, 140, 130),
             ))
-        sep = ("─" * 42, (60, 60, 60))
-        shortcuts = [
-            ("Space+30프레임  . +5  , -5  F/B ±1프레임", (140, 140, 140)),
-            ("1/2/3=선수선택  T=테크니션 D=디펜더 M=어태커", (140, 140, 140)),
-            ("A=공격 V=수비 R=전환  I/U=의도순환", (140, 140, 140)),
-            ("클릭=위치마킹  Z=취소  Enter=저장  C=초기화  S/Q=저장종료", (140, 140, 140)),
+
+        # ── 키 레퍼런스 ──
+        key_sections: list[tuple[str, tuple]] = [
+            ("── 프레임 이동 ──────────────────", (70, 80, 70)),
+            ("Space=+30  X=-30  .=+5  ,=-5", VAL),
+            ("F=+1프레임  B=-1프레임  0=처음으로", VAL),
+            ("── 선수 / 역할 / 컨텍스트 ────────", (70, 80, 70)),
+            ("1/2/3 = 선수 선택", VAL),
+            ("T=테크니션  D=디펜더  M=어태커", VAL),
+            ("A=공격  V=수비  R=전환", VAL),
+            ("I=의도▶  U=의도◀", VAL),
+            ("── 마킹 / 저장 ───────────────────", (70, 80, 70)),
+            ("클릭 = 발끝 위치 마킹", VAL),
+            ("Z=마지막취소  C=흔적초기화", VAL),
+            ("Enter=패턴저장  S=CSV쓰기  Q=종료", VAL),
+            ("── 캘리브레이션 ─────────────────", (70, 80, 70)),
+            ("K = 캘리브/어노테이션 전환", VAL),
+            ("D=기본값  N=전체초기화", VAL),
+            ("코너클릭=선택→재클릭=이동  Esc=취소", VAL),
         ]
-        all_lines = lines + [sep] + shortcuts
+
+        all_lines = status_lines + [("", (0,0,0))] + key_sections
         hud_h = len(all_lines) * LINE_H + 8
-        hud = np.full((hud_h, W, 3), (22, 22, 22), np.uint8)
+        hud = np.full((hud_h, W, 3), (18, 20, 18), np.uint8)
         for i, (text, clr) in enumerate(all_lines):
-            put_text_kr(hud, text, (6, 4 + i * LINE_H), 14, clr)
+            if text:
+                put_text_kr(hud, text, (5, 4 + i * LINE_H), 13, clr)
         return hud
 
     # ── Mouse callback ───────────────────────────────────────────────
@@ -622,6 +641,8 @@ class AnnotateTool:
         # 프레임 이동 — 캘리브레이션/어노테이션 양쪽 모드에서 동작
         if key == ord(' '):
             self._advance(30)
+        elif key == ord('x') or key == ord('X'):
+            self._advance(-30)
         elif key == ord('.'):
             self._advance(5)
         elif key == ord(','):
@@ -630,6 +651,9 @@ class AnnotateTool:
             self._advance(1)
         elif key in (ord('b'), ord('B')):
             self._advance(-1)
+        elif key == ord('0'):
+            self._seek(0)
+            print("[Nav] 처음으로 이동")
         # 캘리브레이션 모드면 여기서 종료
         if self.calib_mode:
             return True
