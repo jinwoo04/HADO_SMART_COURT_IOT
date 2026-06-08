@@ -453,6 +453,99 @@ def test_r5_team_b_fires():
     print("  ✓ R5 Team B 관점 발화")
 
 
+# ── R6: Lane Concentration ───────────────────────────────────────────────────
+
+def test_r6_fires_when_enemies_top_lane():
+    """적 2명(전체 2명)이 상단 레인(y < H/3) → R6 발화."""
+    e = TacticEngine(
+        court_width_m=10.0,
+        court_height_m=6.0,
+        lane_concentration_ratio=0.60,
+    )
+    # 팀A(x<5): P1. 팀B(x>5): P2,P3 모두 y < 2.0 (top lane)
+    players = [
+        PlayerState(track_id=1, court_x=2.0, court_y=3.0),   # A — 중앙
+        PlayerState(track_id=2, court_x=7.0, court_y=0.5),   # B top
+        PlayerState(track_id=3, court_x=7.0, court_y=1.5),   # B top
+    ]
+    advices = {a.track_id: a for a in e.analyze(players)}
+    assert advices[1].rule == "R6", f"R6 미발화: {advices[1].rule}"
+    assert advices[1].urgency == "MID"
+    assert advices[1].target_pos[1] < advices[1].current_pos[1], "위쪽 레인으로 이동해야 함"
+
+
+def test_r6_fires_when_enemies_bottom_lane():
+    """적 2명이 하단 레인(y > H*2/3) → R6 발화."""
+    e = TacticEngine(court_width_m=10.0, court_height_m=6.0)
+    players = [
+        PlayerState(track_id=1, court_x=2.0, court_y=3.0),   # A 중앙
+        PlayerState(track_id=2, court_x=7.0, court_y=4.5),   # B bottom
+        PlayerState(track_id=3, court_x=7.0, court_y=5.5),   # B bottom
+    ]
+    advices = {a.track_id: a for a in e.analyze(players)}
+    assert advices[1].rule == "R6", f"하단 R6 미발화: {advices[1].rule}"
+    assert advices[1].target_pos[1] > advices[1].current_pos[1], "아래쪽 레인으로 이동해야 함"
+
+
+def test_r6_not_fire_when_already_in_lane():
+    """이미 해당 레인에 있으면 R6 미발화 (다른 규칙으로 처리)."""
+    e = TacticEngine(court_width_m=10.0, court_height_m=6.0)
+    players = [
+        PlayerState(track_id=1, court_x=2.0, court_y=0.8),   # A — 이미 top lane
+        PlayerState(track_id=2, court_x=7.0, court_y=0.5),   # B top
+        PlayerState(track_id=3, court_x=7.0, court_y=1.5),   # B top
+    ]
+    advices = {a.track_id: a for a in e.analyze(players)}
+    assert advices[1].rule != "R6", f"이미 레인 안 → R6 오발화: {advices[1].rule}"
+
+
+def test_r6_not_fire_when_enemies_spread():
+    """적이 고르게 분포 → R6 미발화."""
+    e = TacticEngine(court_width_m=10.0, court_height_m=6.0)
+    players = [
+        PlayerState(track_id=1, court_x=2.0, court_y=3.0),
+        PlayerState(track_id=2, court_x=7.0, court_y=1.0),   # top
+        PlayerState(track_id=3, court_x=7.0, court_y=5.0),   # bottom
+    ]
+    advices = {a.track_id: a for a in e.analyze(players)}
+    assert advices[1].rule != "R6", f"분산 대형 → R6 오발화: {advices[1].rule}"
+
+
+def test_r6_not_fire_when_only_one_opponent():
+    """적 1명이면 R6 조건(opponents>=2) 미충족 → 미발화."""
+    e = TacticEngine(court_width_m=10.0, court_height_m=6.0)
+    players = [
+        PlayerState(track_id=1, court_x=2.0, court_y=3.0),
+        PlayerState(track_id=2, court_x=7.0, court_y=0.5),   # 1명만
+    ]
+    advices = {a.track_id: a for a in e.analyze(players)}
+    assert advices[1].rule != "R6"
+
+
+def test_r6_priority_below_r3():
+    """R3(정면 위협) 조건이 성립하면 R6보다 우선 (elif 체인으로 보장).
+    6m 코트 + 팀 pre-assign 방식으로 R3/R6 동시 성립 시나리오 재현."""
+    e = TacticEngine(
+        court_width_m=6.0, court_height_m=6.0,
+        counter_range_m=2.5, lane_concentration_ratio=0.60,
+    )
+    # Step 1: 팀 배정 확립 (P2/P3 = B)
+    e.analyze([
+        PlayerState(track_id=1, court_x=1.5, court_y=3.0),
+        PlayerState(track_id=2, court_x=4.5, court_y=3.0),
+        PlayerState(track_id=3, court_x=4.5, court_y=0.5),
+    ])
+    # Step 2: P2가 B로 고정된 채 A진영에 1.5m 정면 접근 + P2/P3 모두 top_y(y<2.0) 집중
+    players = [
+        PlayerState(track_id=1, court_x=1.5, court_y=3.0),   # A 중앙
+        PlayerState(track_id=2, court_x=3.0, court_y=3.0),   # B pre-assigned, dist=1.5 < 2.5
+        PlayerState(track_id=3, court_x=4.0, court_y=0.5),   # B top lane
+    ]
+    advices = {a.track_id: a for a in e.analyze(players)}
+    # R3 우선 (적 P2가 1.5m 정면) → R6 아님
+    assert advices[1].rule == "R3", f"우선순위 실패: {advices[1].rule}"
+
+
 # ── _depth_in_own_half ────────────────────────────────────────────────────────
 
 def test_depth_team_a():

@@ -145,10 +145,18 @@ def _draw_history(
 
 # ── 메인 루프 ─────────────────────────────────────────────────────────────────
 def run(args) -> int:
-    # 모델 선택: ONNX 있으면 우선 사용 (Pi4 최적화)
+    # 모델 우선순위: NCNN(Pi4 최적) > ONNX > .pt
+    ncnn_path = PROJECT_ROOT / "yolov8n-pose_ncnn_model"
     onnx_path = PROJECT_ROOT / "yolov8n-pose.onnx"
-    model_path = str(onnx_path) if (onnx_path.exists() and not args.pt) else "yolov8n-pose.pt"
-    print(f"[ActionDemo] 모델: {model_path}")
+    if ncnn_path.exists() and not args.pt and not args.onnx:
+        model_path = str(ncnn_path)
+        print(f"[ActionDemo] NCNN 모델 사용 (Pi4 최적화): {model_path}")
+    elif onnx_path.exists() and not args.pt:
+        model_path = str(onnx_path)
+        print(f"[ActionDemo] ONNX 모델 사용: {model_path}")
+    else:
+        model_path = "yolov8n-pose.pt"
+        print(f"[ActionDemo] PyTorch 모델 사용: {model_path}")
 
     detector = PersonDetector(
         model_path=model_path,
@@ -167,6 +175,7 @@ def run(args) -> int:
         width=args.width,
         height=args.height,
         fps=args.fps,
+        threaded=args.threaded,
     )
     cam.open()
 
@@ -202,7 +211,7 @@ def run(args) -> int:
 
             if target is not None:
                 draw_skeleton(frame, target)
-                result = classify_hado_action(target)
+                result = classify_hado_action(target, frame_center_x=args.width / 2)
                 if result is not None:
                     last_result = result
                     smooth_buf.append(result.action)
@@ -278,6 +287,8 @@ def main() -> None:
     parser.add_argument("--record",     default="",    help="출력 mp4 경로")
     parser.add_argument("--max-frames", type=int,   default=0)
     parser.add_argument("--headless",   action="store_true")
+    parser.add_argument("--threaded",   action="store_true", help="스레드 캡처 (Pi4 FPS 향상)")
+    parser.add_argument("--onnx",       action="store_true", help="NCNN 대신 ONNX 강제 사용")
     raise SystemExit(run(parser.parse_args()))
 
 

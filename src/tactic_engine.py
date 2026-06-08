@@ -131,6 +131,7 @@ class TacticEngine:
         gap_min_m: float = 2.5,
         backline_depth_m: float = 2.0,
         coverage_spread_min_m: float = 1.5,
+        lane_concentration_ratio: float = 0.60,   # R6: 이 비율 이상 집중 시 발화
         movement_model=None,    # MovementModel | None (순환 import 방지로 타입 미지정)
     ):
         self.court_width = court_width_m
@@ -141,6 +142,7 @@ class TacticEngine:
         self.gap_min = gap_min_m
         self.backline_depth = backline_depth_m
         self.coverage_spread_min = coverage_spread_min_m
+        self.lane_concentration_ratio = lane_concentration_ratio
         self._movement_model = movement_model
         self._team_assignment: Dict[int, str] = {}
 
@@ -150,15 +152,16 @@ class TacticEngine:
         court = config.get("court", {})
         tc    = config.get("tactic", {})
         return cls(
-            court_width_m         = court.get("width_m",               10.0),
-            court_height_m        = court.get("height_m",               6.0),
-            spacing_min_m         = tc.get("spacing_min_m",             1.5),
-            counter_range_m       = tc.get("counter_range_m",           3.0),
-            counter_y_offset_m    = tc.get("counter_y_offset_m",        1.0),
-            gap_min_m             = tc.get("gap_min_m",                 2.5),
-            backline_depth_m      = tc.get("backline_depth_m",          2.0),
-            coverage_spread_min_m = tc.get("coverage_spread_min_m",     1.5),
-            movement_model        = movement_model,
+            court_width_m             = court.get("width_m",               10.0),
+            court_height_m            = court.get("height_m",               6.0),
+            spacing_min_m             = tc.get("spacing_min_m",             1.5),
+            counter_range_m           = tc.get("counter_range_m",           3.0),
+            counter_y_offset_m        = tc.get("counter_y_offset_m",        1.0),
+            gap_min_m                 = tc.get("gap_min_m",                 2.5),
+            backline_depth_m          = tc.get("backline_depth_m",          2.0),
+            coverage_spread_min_m     = tc.get("coverage_spread_min_m",     1.5),
+            lane_concentration_ratio  = tc.get("lane_concentration_ratio",  0.60),
+            movement_model            = movement_model,
         )
 
     # ----- 팀 배정 -----
@@ -260,36 +263,57 @@ class TacticEngine:
             urgency, voice, rule = "MID", "거리 확보", "R1"
             reason = f"팀원과 너무 가까움 (#{mate.track_id})"
 
-        # R4: 적 라인 사이 공간 공격 (MID)
+        # R4/R6 블록: 적이 2명 이상일 때 레인 집중(R6) → 갭공격(R4) → 팀 쏠림(R2) 순 체크
         elif len(opponents) >= 2:
-            opp_sorted = sorted(opponents, key=lambda o: o.court_y)
-            _r4_applied = False
-            for i in range(len(opp_sorted) - 1):
-                gap_size = opp_sorted[i + 1].court_y - opp_sorted[i].court_y
-                if gap_size > self.gap_min:
-                    gap_y = (opp_sorted[i].court_y + opp_sorted[i + 1].court_y) / 2
-                    opp_x_avg = sum(o.court_x for o in opponents) / len(opponents)
-                    half = self.court_width / 2
-                    if team == "A":
-                        target_x = max(me.court_x, min(opp_x_avg - 0.4, half - 0.1))
-                    else:
-                        target_x = min(me.court_x, max(opp_x_avg + 0.4, half + 0.1))
-                    target = (target_x, gap_y)
-                    urgency, voice, rule = "MID", "공격 전진", "R4"
-                    reason = f"적 라인 공간 공격 ({gap_size:.1f}m gap)"
-                    _r4_applied = True
-                    break
-            # R4 미적용 → R2 체크
-            if not _r4_applied and teammates:
-                ys = [t.court_y for t in teammates] + [me.court_y]
-                if max(ys) - min(ys) < self.coverage_spread_min:
-                    team_y_avg = sum(ys) / len(ys)
-                    if me.court_y >= team_y_avg:
-                        target = (me.court_x, min(self.court_height - 0.3, team_y_avg + 0.9))
-                    else:
-                        target = (me.court_x, max(0.3, team_y_avg - 0.9))
-                    urgency, voice, rule = "MID", "측면 커버", "R2"
-                    reason = "팀이 한쪽 쏠림 — 커버 분담"
+            # R6: 적 레인 집중 → 해당 레인 커버 (MID)
+            top_y   = self.court_height / 3
+            bot_y   = self.court_height * 2 / 3
+            top_cnt = sum(1 for o in opponents if o.court_y < top_y)
+            bot_cnt = sum(1 for o in opponents if o.court_y > bot_y)
+            ratio   = self.lane_concentration_ratio
+            _r6_applied = False
+
+            if top_cnt / len(opponents) >= ratio and me.court_y > top_y:
+                target = (me.court_x, top_y * 0.5)
+                urgency, voice, rule = "MID", "위쪽 레인 커버", "R6"
+                reason = f"적 상단 집중 ({top_cnt}/{len(opponents)}명)"
+                _r6_applied = True
+            elif bot_cnt / len(opponents) >= ratio and me.court_y < bot_y:
+                target = (me.court_x, bot_y + (self.court_height - bot_y) * 0.5)
+                urgency, voice, rule = "MID", "아래쪽 레인 커버", "R6"
+                reason = f"적 하단 집중 ({bot_cnt}/{len(opponents)}명)"
+                _r6_applied = True
+
+            if not _r6_applied:
+                # R4: 적 라인 사이 공간 공격 (MID)
+                opp_sorted = sorted(opponents, key=lambda o: o.court_y)
+                _r4_applied = False
+                for i in range(len(opp_sorted) - 1):
+                    gap_size = opp_sorted[i + 1].court_y - opp_sorted[i].court_y
+                    if gap_size > self.gap_min:
+                        gap_y = (opp_sorted[i].court_y + opp_sorted[i + 1].court_y) / 2
+                        opp_x_avg = sum(o.court_x for o in opponents) / len(opponents)
+                        half = self.court_width / 2
+                        if team == "A":
+                            target_x = max(me.court_x, min(opp_x_avg - 0.4, half - 0.1))
+                        else:
+                            target_x = min(me.court_x, max(opp_x_avg + 0.4, half + 0.1))
+                        target = (target_x, gap_y)
+                        urgency, voice, rule = "MID", "공격 전진", "R4"
+                        reason = f"적 라인 공간 공격 ({gap_size:.1f}m gap)"
+                        _r4_applied = True
+                        break
+                # R2: 팀 쏠림 커버
+                if not _r4_applied and teammates:
+                    ys = [t.court_y for t in teammates] + [me.court_y]
+                    if max(ys) - min(ys) < self.coverage_spread_min:
+                        team_y_avg = sum(ys) / len(ys)
+                        if me.court_y >= team_y_avg:
+                            target = (me.court_x, min(self.court_height - 0.3, team_y_avg + 0.9))
+                        else:
+                            target = (me.court_x, max(0.3, team_y_avg - 0.9))
+                        urgency, voice, rule = "MID", "측면 커버", "R2"
+                        reason = "팀이 한쪽 쏠림 — 커버 분담"
 
         # R2: 팀 쏠림 커버 (opponents < 2인 경우)
         elif teammates:

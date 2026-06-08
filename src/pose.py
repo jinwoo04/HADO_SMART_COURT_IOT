@@ -81,7 +81,8 @@ POSTURE_TO_INTENT = {
 
 # ── HADO 6동작 분류기 ────────────────────────────────────────────
 ACTION_KO: dict[str, str] = {
-    "shoot":   "공격 발사",
+    "charge":  "차지 준비",    # 팔 위로 들어올림 (발사 직전)
+    "shoot":   "공격 발사",    # 팔 앞으로 뻗음 (팀 방향 기준)
     "shield":  "쉴드 방어",
     "dodge_l": "회피 좌",
     "dodge_r": "회피 우",
@@ -90,6 +91,7 @@ ACTION_KO: dict[str, str] = {
 }
 
 ACTION_COLOR: dict[str, tuple[int, int, int]] = {
+    "charge":  (0,   180, 255),   # 하늘색
     "shoot":   (30,  120, 255),   # 주황
     "shield":  (40,  200,  80),   # 초록
     "dodge_l": (0,   220, 255),   # 노랑
@@ -99,6 +101,7 @@ ACTION_COLOR: dict[str, tuple[int, int, int]] = {
 }
 
 ACTION_EMOJI: dict[str, str] = {
+    "charge":  "↑",
     "shoot":   "⚡",
     "shield":  "🛡",
     "dodge_l": "←",
@@ -118,10 +121,22 @@ class ActionResult:
     scores: "dict[str, float]"  # 각 동작별 원시 점수
 
 
-def classify_hado_action(det: "Detection") -> "ActionResult | None":
-    """Detection 키포인트 → HADO 6동작 분류.
+def classify_hado_action(
+    det: "Detection",
+    frame_center_x: float = 320.0,
+) -> "ActionResult | None":
+    """Detection 키포인트 → HADO 7동작 분류.
 
-    판정 우선순위: 슬라이딩 > 공격발사 > 쉴드방어 > 회피좌/우 > 준비
+    Parameters
+    ----------
+    det             : 키포인트를 포함한 Detection 객체
+    frame_center_x  : 프레임 중앙 x픽셀 (팀 방향 판단용, 기본 320)
+
+    판정 우선순위: 슬라이딩 > 차지 > 공격발사 > 쉴드방어 > 회피좌/우 > 준비
+
+    스케일 정규화:
+        scale = max(어깨폭, 몸통높이×0.6, 30px)
+        → 카메라 거리에 관계없이 동일 임계값 적용
     """
     if det.keypoints is None:
         return None
@@ -141,40 +156,64 @@ def classify_hado_action(det: "Detection") -> "ActionResult | None":
     lh, rh = _k(_LH), _k(_RH)
     lk, rk = _k(_LK), _k(_RK)
 
-    # ── 슬라이딩 점수: 어깨~무릎 수직 압축 ────────────────────
+    # ── 스케일: 어깨폭 + 몸통높이 기반 정규화 ─────────────────
+    shoulder_w = abs(rs[0] - ls[0]) if (ls and rs) else 0.0
+    torso_h = 0.0
+    if ls and rs and lh and rh:
+        sh_y = (ls[1] + rs[1]) / 2
+        hi_y = (lh[1] + rh[1]) / 2
+        torso_h = abs(hi_y - sh_y)
+    scale = max(shoulder_w, torso_h * 0.6, 30.0)
+
+    # 팀 방향: 팀A(왼쪽, x<center)→+1(오른쪽이 적 방향), 팀B→-1
+    center_x = (det.x1 + det.x2) / 2
+    facing = +1.0 if center_x < frame_center_x else -1.0
+
+    # ── 슬라이딩 점수: 어깨~무릎 수직 압축 ─────────────────────
     crouch = 0.0
     if ls and rs and lk and rk:
         sh_y = (ls[1] + rs[1]) / 2
         kn_y = (lk[1] + rk[1]) / 2
-        span = kn_y - sh_y  # 직립 ≈ 0.5×bbox_h, 웅크림 ≈ 0.2×bbox_h
+        span = kn_y - sh_y
         crouch = max(0.0, 1.0 - span / (0.45 * bbox_h))
 
-    # ── 공격발사 점수: 손목이 어깨보다 위에 있는 정도 ────────
+    # ── 차지 점수: 손목이 어깨보다 위, 거의 수직 방향 ──────────
+    # scale 기반: dy/scale < -0.55 and |dx/scale| < 0.70
+    charge = 0.0
+    for wrist, shoulder in [(lw, ls), (rw, rs)]:
+        if wrist and shoulder:
+            dx = (wrist[0] - shoulder[0]) / scale
+            dy = (wrist[1] - shoulder[1]) / scale   # 위 = 음수
+            if dy < -0.55 and abs(dx) < 0.70:
+                charge = max(charge, min(1.0, abs(dy) - 0.55 + 0.5))
+
+    # ── 공격발사 점수: 손목이 팀 방향(앞)으로 뻗임 ─────────────
+    # scale 기반: forward/scale > 0.65, |dy/scale| < 0.50
     shoot = 0.0
     for wrist, shoulder in [(lw, ls), (rw, rs)]:
         if wrist and shoulder:
-            # y축: 위 = 작은 값 → wrist.y < shoulder.y 일수록 올린 팔
-            raised = (shoulder[1] - wrist[1]) / bbox_h  # 양수 = 손목이 어깨 위
-            shoot = max(shoot, raised)
+            dx_raw  = (wrist[0] - shoulder[0]) / scale
+            dy_norm = abs((wrist[1] - shoulder[1]) / scale)
+            forward = dx_raw * facing   # 팀 방향 기준 앞쪽이 양수
+            if forward > 0.65 and dy_norm < 0.50:
+                shoot = max(shoot, min(1.0, forward - 0.65 + 0.5))
 
-    # ── 쉴드방어 점수: 양팔 벌림 + 양 손목 팔꿈치 위 ─────────
+    # ── 쉴드방어 점수: 양팔 벌림 + 양 손목 팔꿈치 위 ───────────
     spread = 0.0
-    both_raised = False
     if lw and ls:
         spread = max(spread, abs(lw[0] - ls[0]) / bbox_w)
     if rw and rs:
         spread = max(spread, abs(rw[0] - rs[0]) / bbox_w)
-    lw_raised = (lw and le) and (lw[1] < le[1])  # 왼손목이 왼팔꿈치보다 위
-    rw_raised = (rw and re) and (rw[1] < re[1])
-    both_raised = bool(lw_raised and rw_raised)
-    shield = spread * (1.2 if both_raised else 0.6)
+    lw_raised = bool(lw and le and lw[1] < le[1])
+    rw_raised = bool(rw and re and rw[1] < re[1])
+    shield = spread * (1.2 if (lw_raised and rw_raised) else 0.6)
 
-    # ── 회피 점수: 어깨 중점이 엉덩이 중점에서 수평으로 벗어난 정도 ──
+    # ── 회피 점수: 어깨 중점이 엉덩이 중점에서 수평으로 벗어남 ─
     dodge_l = dodge_r = 0.0
     if ls and rs and lh and rh:
         sh_cx = (ls[0] + rs[0]) / 2
         hi_cx = (lh[0] + rh[0]) / 2
-        lean  = (sh_cx - hi_cx) / bbox_w   # 양수 = 어깨가 오른쪽
+        lean  = (sh_cx - hi_cx) / bbox_w
         if lean < 0:
             dodge_l = min(1.0, abs(lean) * 3)
         else:
@@ -182,6 +221,7 @@ def classify_hado_action(det: "Detection") -> "ActionResult | None":
 
     scores = {
         "crouch":  round(crouch,  3),
+        "charge":  round(charge,  3),
         "shoot":   round(shoot,   3),
         "shield":  round(shield,  3),
         "dodge_l": round(dodge_l, 3),
@@ -192,8 +232,10 @@ def classify_hado_action(det: "Detection") -> "ActionResult | None":
     # 우선순위 판정
     if crouch > 0.55:
         action, conf = "crouch", crouch
-    elif shoot > 0.25:
-        action, conf = "shoot", min(1.0, shoot * 2)
+    elif charge > 0.30:
+        action, conf = "charge", min(1.0, charge)
+    elif shoot > 0.30:
+        action, conf = "shoot", min(1.0, shoot)
     elif shield > 0.55:
         action, conf = "shield", min(1.0, shield)
     elif dodge_l > 0.30:
@@ -201,9 +243,66 @@ def classify_hado_action(det: "Detection") -> "ActionResult | None":
     elif dodge_r > 0.30:
         action, conf = "dodge_r", dodge_r
     else:
-        action, conf = "ready", 1.0 - max(crouch, shoot, shield, dodge_l, dodge_r)
+        action, conf = "ready", 1.0 - max(crouch, charge, shoot, shield, dodge_l, dodge_r)
 
     return ActionResult(action=action, confidence=round(conf, 3), scores=scores)
+
+
+def sample_vest_hue(frame: "np.ndarray", det: "Detection") -> int:
+    """선수 조끼 색상(HSV hue) 샘플링.
+
+    토르소 영역(어깨 + 엉덩이 키포인트 bounding box)을 HSV로 변환하고
+    채도·명도 필터를 통과한 픽셀의 원형 평균 hue를 반환한다.
+
+    Returns
+    -------
+    int : hue 0–179 (OpenCV 기준), 또는 -1 (키포인트 불충분 / 픽셀 부족)
+    """
+    import math as _math
+
+    if det.keypoints is None:
+        return -1
+
+    kpts = det.keypoints
+    h_img, w_img = frame.shape[:2]
+
+    def _kp(i: int):
+        if kpts[i, 2] >= 0.30:
+            return float(kpts[i, 0]), float(kpts[i, 1])
+        return None
+
+    ls, rs = _kp(_LS), _kp(_RS)
+    lh, rh = _kp(_LH), _kp(_RH)
+
+    if not (ls and rs and lh and rh):
+        return -1
+
+    all_x = [ls[0], rs[0], lh[0], rh[0]]
+    all_y = [ls[1], rs[1], lh[1], rh[1]]
+    x1 = int(max(0, min(all_x)))
+    y1 = int(max(0, min(ls[1], rs[1])))
+    x2 = int(min(w_img, max(all_x)))
+    y2 = int(min(h_img, max(lh[1], rh[1])))
+
+    if x2 - x1 < 6 or y2 - y1 < 10:
+        return -1
+
+    torso = frame[y1:y2, x1:x2]
+    hsv   = cv2.cvtColor(torso, cv2.COLOR_BGR2HSV)
+
+    # 채도 > 70, 명도 60~240 → 그림자·하이라이트 제외
+    sat_mask = (hsv[..., 1] > 70) & (hsv[..., 2] > 60) & (hsv[..., 2] < 240)
+    if sat_mask.sum() < 25:
+        return -1
+
+    hues = hsv[..., 0][sat_mask].astype(np.float32)
+    # 원형 평균 hue (0↔180 wrap 처리)
+    rad  = hues * (2 * _math.pi / 180.0)
+    cs   = float(np.cos(rad).mean())
+    sn   = float(np.sin(rad).mean())
+    mean_rad = _math.atan2(sn, cs)
+    mean_hue = (mean_rad * 180.0 / (2 * _math.pi)) % 180.0
+    return int(round(mean_hue))
 
 
 # ── 데이터클래스 ───────────────────────────────────────────────

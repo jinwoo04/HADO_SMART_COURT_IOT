@@ -2,9 +2,13 @@
 
 Pi Camera (picamera2)와 일반 USB 웹캠(cv2.VideoCapture)을 동일한 인터페이스로 사용.
 노트북에서도 동작하도록 자동 fallback.
+
+threaded=True 로 생성하면 백그라운드 스레드가 항상 최신 프레임을 유지하므로
+추론 루프에서 카메라 I/O 대기 없이 즉시 프레임을 얻는다 (Pi4 FPS 향상).
 """
 from __future__ import annotations
 
+import threading
 import time
 from typing import Optional, Tuple
 
@@ -17,7 +21,7 @@ class Camera:
 
     사용 예시
     ---------
-    >>> cam = Camera(width=1280, height=720, fps=30)
+    >>> cam = Camera(width=640, height=480, fps=30, threaded=True)
     >>> cam.open()
     >>> while True:
     ...     ok, frame = cam.read()
@@ -32,16 +36,24 @@ class Camera:
         height: int = 720,
         fps: int = 30,
         prefer_picamera: bool = True,
+        threaded: bool = False,
     ):
         self.source = source
         self.width = width
         self.height = height
         self.fps = fps
         self.prefer_picamera = prefer_picamera
+        self._threaded = threaded
 
         self._backend: str = "none"
         self._cap: Optional[cv2.VideoCapture] = None
         self._picam = None  # picamera2 인스턴스
+
+        # 스레드 캡처 관련
+        self._thread: Optional[threading.Thread] = None
+        self._latest_frame: Optional[np.ndarray] = None
+        self._frame_lock = threading.Lock()
+        self._thread_running = False
 
     # ---------- 라이프사이클 ----------
     def open(self) -> str:
@@ -75,6 +87,7 @@ class Camera:
         self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
         self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
         self._cap.set(cv2.CAP_PROP_FPS, self.fps)
+        self._cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # 최신 프레임만 유지 → 지연 제거
 
         actual_w = int(self._cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         actual_h = int(self._cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -82,9 +95,39 @@ class Camera:
         print(f"[Camera] OpenCV 백엔드 사용 (요청 {self.width}x{self.height}, "
               f"실제 {actual_w}x{actual_h} @{actual_fps:.0f}fps)")
         self._backend = "opencv"
+
+        if self._threaded:
+            self._start_capture_thread()
+            print("[Camera] 스레드 캡처 활성화")
+
         return self._backend
 
+    # ---------- 스레드 캡처 ----------
+    def _start_capture_thread(self) -> None:
+        """백그라운드 스레드로 카메라에서 최신 프레임을 지속 획득."""
+        self._thread_running = True
+
+        def _loop():
+            while self._thread_running:
+                if self._cap is not None:
+                    ret, frame = self._cap.read()
+                    if ret:
+                        with self._frame_lock:
+                            self._latest_frame = frame
+                    else:
+                        time.sleep(0.005)
+                else:
+                    time.sleep(0.01)
+
+        self._thread = threading.Thread(target=_loop, daemon=True)
+        self._thread.start()
+
     def close(self):
+        self._thread_running = False
+        if self._thread is not None:
+            self._thread.join(timeout=1.0)
+            self._thread = None
+
         if self._picam is not None:
             try:
                 self._picam.stop()
@@ -106,13 +149,20 @@ class Camera:
 
     # ---------- 프레임 읽기 ----------
     def read(self) -> Tuple[bool, np.ndarray]:
-        """단일 프레임 캡처. BGR ndarray 반환."""
+        """단일 프레임 캡처. BGR ndarray 반환.
+
+        threaded=True 모드에서는 백그라운드 스레드가 유지한 최신 프레임을 즉시 반환한다.
+        """
         if self._backend == "picamera2":
             frame = self._picam.capture_array()
-            # picamera2가 RGB로 반환 → OpenCV용 BGR로 변환
             frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
             return True, frame_bgr
         elif self._backend == "opencv":
+            if self._threaded:
+                with self._frame_lock:
+                    if self._latest_frame is None:
+                        return False, np.zeros((self.height, self.width, 3), dtype=np.uint8)
+                    return True, self._latest_frame.copy()
             return self._cap.read()
         else:
             raise RuntimeError("카메라가 열려있지 않습니다. open()을 먼저 호출하세요.")
