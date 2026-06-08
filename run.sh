@@ -53,6 +53,9 @@ case "$CMD" in
     demo_pose|pose)
         python -m src.demo_pose "${@:2}"
         ;;
+    action|action_demo)
+        python -m src.action_demo "${@:2}"
+        ;;
     match)
         python -m src.main --match "${@:2}"
         ;;
@@ -75,18 +78,11 @@ case "$CMD" in
         python -m src.label_intents "${@:2}"
         ;;
     test)
-        python -m tests.test_homography
-        python -m tests.test_detector
-        python -m tests.test_tracker
-        python -m tests.test_camera
-        python -m tests.test_visualizer
-        python -m tests.test_tactic_engine
-        python -m tests.test_guide
-        python -m pytest tests/test_movement_model.py -q
+        python -m pytest tests/ -q
         python -m src.homography
         ;;
     *)
-        echo "사용법: ./run.sh [main|calibrate|bench|detect|test|demo|annotate|label]"
+        echo "사용법: ./run.sh [main|calibrate|bench|detect|test|demo|action|annotate|label]"
         exit 1
         ;;
 esac
