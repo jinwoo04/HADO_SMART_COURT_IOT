@@ -11,8 +11,8 @@
 |------|-----|
 | 로컬 경로 | `/Users/jinu/iot project/hado-smart-court-iot` |
 | GitHub | `https://github.com/jinwoo04/HADO_SMART_COURT_IOT.git` |
-| Python venv | `~/hado_venv` (python3 → `/opt/anaconda3/bin/python3.13`) |
-| 실행 prefix | `~/hado_venv/bin/python3 -m src.<module>` |
+| Python venv | `./hado_venv` 우선, 대안 `~/hado_venv` |
+| 실행 prefix | `./hado_venv/bin/python -m src.<module>` |
 
 ---
 
@@ -173,10 +173,55 @@ source ~/hado_venv/bin/activate
 
 ---
 
-## 12. 남은 작업 (W5–W6)
+## 12. 완료된 작업 (2026-06-09 오전 — 4AM 코드 리뷰 + 발표 준비)
 
-- W5 (6/11-17): Pi 4 실측 (fps, RAM, 온도, 위치 오차) → `docs/QA_PREP.md` [TODO] 채우기
-- W6 (6/18-22): Final report §5 실측 데이터 기입, Q&A 영어 리허설 5회
+### 버그 수정
+
+| 심각도 | 파일 | 내용 |
+|--------|------|------|
+| **High** | `camera.py` | threaded 첫 프레임 `(False,zeros)` → 루프 즉시 종료 버그 수정 |
+| Low | `action_demo.py` | docstring "6동작"→7동작, bar_w 음수 가드, 배경 rect 높이 |
+| Low | `pose.py` | "6동작" 주석 정정 |
+| Low | `tactic_engine.py` | main() 시나리오 B팀 x=4.5→5.5 (팀 배정 오류) |
+
+### 기능/인프라 개선
+
+| 파일 | 내용 |
+|------|------|
+| `src/measure_error.py` *(신규)* | W5 위치 오차 RMS 자동 계산 (CSV + 기준점 목록 입력) |
+| `src/benchmark.py` | 피크 RAM + Pi4 CPU 온도 자동 측정 추가 |
+| `run.sh` | `pytest tests/ -q` 통합, `action_demo` / `measure-error` 명령 추가 |
+| `config/court_config.yaml` | R6 `lane_concentration_ratio: 0.60` 파라미터 추가 |
+
+### 문서
+
+| 파일 | 내용 |
+|------|------|
+| `docs/FINAL_PRESENTATION_SCRIPT_EN.md` *(신규)* | 4분 영어 발표 대본 (슬라이드별) |
+| `docs/W5_PI4_QUICKRUN.md` *(신규)* | Pi4 현장 실측 빠른 실행 가이드 + 기록 체크리스트 |
+| `docs/QA_PREP.md` | Q12 R6 우선순위 반영, Q23 동작인식 질문 추가 |
+| `docs/DEMO_STORYBOARD.md` | "5 rules" → "6 rules" |
+| `README.md` | 7동작/6규칙/action_demo/W4 완료 전면 갱신 |
+| `CLAUDE.md` | W3/W4 DONE, W5 측정 항목 명시 |
+
+### 테스트: 180 → **196개** 통과
+
+| 추가 파일 | 테스트 수 |
+|-----------|----------|
+| `tests/test_vest.py` | 11개 (detect_vest + 상수) |
+| `tests/test_benchmark.py` | 5개 (_ram_mb, _cpu_temp_c) |
+
+---
+
+## 13. 남은 작업 (W5–W6)
+
+### 진우가 직접 해야 하는 것 (하드웨어 필요)
+- **W5 (6/11-17)**: Pi4 코트 현장 → `docs/W5_PI4_QUICKRUN.md` 참고
+  - `./run.sh bench --frames 200` → FPS/RAM/온도 기록
+  - `./run.sh measure-error --csv ... --ref ...` → 위치 오차 RMS
+  - 결과를 `docs/QA_PREP.md` [TODO] 슬롯에 기입
+- **6/15 최종발표**: `docs/FINAL_PRESENTATION_SCRIPT_EN.md` 참고
+- **W6 (6/18-22)**: Final report §5 실측 데이터 기입, Q&A 영어 리허설 ×5
 
 Claude Code 최신 상세 인계:
 - `docs/CLAUDE_CODE_CONTINUATION_BRIEF_2026_06_08.md`
@@ -184,35 +229,36 @@ Claude Code 최신 상세 인계:
   - Track A 발표용 설명 흐름
   - Track B V4 player-only 모델 결과 및 실제 영상 smoke test
   - 다음 Claude Code 작업 지시
-- `docs/TRACK_B_BATCH01_INTAKE_2026_06_08.md`
-  - Drive 10경기 import 결과
-  - `tools/process_track_b_video_batch.py` 배치 사용법
-  - hard frame relabeling 우선순위
-- `docs/TRACK_B_NEXT_ACTIONS_2026_06_09.md`
-  - 사용자가 깨어난 뒤 바로 따라갈 Track B 실행 순서
-  - phase1/priority ZIP 사용법
+- `docs/TRACK_B_HANDOFF_REPORT_2026_06_09.md`
+  - Track B 실무 인계용 보고서
+- `docs/TRACK_B_TECHNICAL_REPORT_2026_06_09.md`
+  - Track B 기술 보고서
+- `docs/TRACK_B_COLLABORATION_REPORT_2026_06_09.md`
+  - 다른 사람에게 공유하기 위한 협업 요약 보고서
 
 ---
 
-## 프로젝트 현재 상태 (W3, 6/8 기준)
+## 프로젝트 현재 상태 (W4 완료, 6/9 기준)
 
 ```
 - [x] W1: Setup + calibration
 - [x] W2: YOLOv8 + tracking
-- [x] W3: Bird-eye view + 중간발표 ← 오늘
-- [x] W4 (6/4-10): Tactic engine + voice ← 완료
-- [ ] W5 (6/11-17): On-court testing + measurements
-- [ ] W6 (6/18-22): Final report + demo video + presentation
+- [x] W3: Bird-eye view + 중간발표 (6/8)
+- [x] W4 (6/4-10): Tactic engine R1~R6 + TTS + action_demo
+- [ ] W5 (6/11-17): On-court testing + Pi4 measurements  ← NEXT
+- [ ] W6 (6/18-22): Final report + demo video + 최종발표
 ```
 
 ### 제출 체크리스트
 
-- [x] Code in `src/` + tests (180개 통과)
-- [x] README.md
-- [x] Final report `.docx` — §5 실측 데이터 미기입
-- [x] Final PPT `.pptx` — 실측 데이터 미기입
-- [x] Demo video `data/demo.mp4` (90초, 28MB)
+- [x] Code in `src/` + tests (196개 통과)
+- [x] README.md (전면 갱신)
+- [x] Final report `.docx` — §5 실측 데이터 미기입 (W5 이후)
+- [x] Final PPT `.pptx` — 실측 데이터 미기입 (W5 이후)
+- [x] Demo video `data/demo.mp4` (90초, 29MB)
 - [x] Backup demo `data/demo_5min.mp4` (5분)
-- [ ] Q&A prep in English
+- [x] Q&A prep: `docs/QA_PREP.md` (23문항, [TODO] 실측치 미기입)
+- [x] 최종발표 영어 대본: `docs/FINAL_PRESENTATION_SCRIPT_EN.md`
+- [ ] Pi4 실측 데이터 (W5)
 
 **최종 제출 마감: 2026-06-22**
