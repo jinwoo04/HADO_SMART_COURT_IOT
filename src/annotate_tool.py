@@ -139,10 +139,14 @@ class AnnotateTool:
         self.frame_idx = 0
         self.frame: Optional[np.ndarray] = None
 
-        # Homography pixel→court (풀코트 기준, 반코트 옵션)
+        # Homography pixel→court (풀코트 기준)
         self.corners_px: list[tuple[float, float]] = []
         self.H: Optional[np.ndarray] = None
         self.calibrated = False
+
+        # 캘리브레이션 UI 상태
+        self.calib_mode = True          # K 키로 토글
+        self.selected_corner: Optional[int] = None  # 선택된 코너 인덱스 (이동 대기)
 
         # Annotation state
         self.active_pid = 1
@@ -173,6 +177,7 @@ class AnnotateTool:
             if key in data:
                 self.corners_px = [tuple(c) for c in data[key]]
                 self._build_H()
+                self.calib_mode = False   # 캘리브레이션 로드 완료 → 어노테이션 모드
                 print(f"[Annotate] 캘리브레이션 로드: {key}")
 
     def _save_corners(self):
@@ -194,6 +199,7 @@ class AnnotateTool:
 
     def _apply_default_corners(self):
         self.corners_px = [tuple(r) for r in _DEFAULT_CORNERS_WINTER.tolist()]
+        self.selected_corner = None
         self._build_H()
         self._save_corners()
         print("[Annotate] 기본 코너 적용 완료")
@@ -276,30 +282,59 @@ class AnnotateTool:
     # ── Rendering ────────────────────────────────────────────────────
     def _render_calib(self) -> np.ndarray:
         disp = cv2.resize(self.frame, (_DISP_W, _DISP_H))
-        labels = [
-            "(1) 좌하단  near-left  (x=0m,  y=6m)",
-            "(2) 우하단  near-right (x=10m, y=6m)",
-            "(3) 우상단  far-right  (x=10m, y=0m)",
-            "(4) 좌상단  far-left   (x=0m,  y=0m)",
+
+        # 그리드 오버레이 (코너 4개 있으면 항상)
+        if self.calibrated:
+            self._draw_grid_overlay(disp)
+
+        corner_labels = [
+            "(1) 좌하단  x=0m  y=6m",
+            "(2) 우하단  x=10m y=6m",
+            "(3) 우상단  x=10m y=0m",
+            "(4) 좌상단  x=0m  y=0m",
         ]
-        # 이미 찍은 코너 표시
+
+        # 기존 코너 표시
         for i, (px, py) in enumerate(self.corners_px):
             sx = int(px * _DISP_W / _CAM_W)
             sy = int(py * _DISP_H / _CAM_H)
-            cv2.circle(disp, (sx, sy), 8, (0, 255, 0), -1)
-            cv2.putText(disp, str(i + 1), (sx + 10, sy - 5),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
-        # 배경 반투명 박스
-        cv2.rectangle(disp, (10, 6), (700, 38), (0, 0, 0), -1)
+            is_selected = (self.selected_corner == i)
+            clr = (0, 200, 255) if is_selected else (0, 255, 80)
+            radius = 12 if is_selected else 8
+            cv2.circle(disp, (sx, sy), radius, clr, -1 if is_selected else 2)
+            cv2.circle(disp, (sx, sy), radius + 3, clr, 1)
+            # 번호 + 픽셀 좌표 표시
+            coord_txt = f"{i+1}: ({int(px)}, {int(py)})"
+            tx = sx + 14 if sx < _DISP_W - 140 else sx - 135
+            ty = sy - 10 if sy > 20 else sy + 20
+            cv2.rectangle(disp, (tx - 2, ty - 14), (tx + 130, ty + 4), (0,0,0), -1)
+            cv2.putText(disp, coord_txt, (tx, ty),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.52, clr, 1, cv2.LINE_AA)
+
+        # 상단 안내 패널
         n_done = len(self.corners_px)
-        if n_done < 4:
-            put_text_kr(disp, f">>> {labels[n_done]}", (16, 10), 16, (0, 220, 255))
+        cv2.rectangle(disp, (0, 0), (_DISP_W, 52), (0, 0, 0), -1)
+        if self.selected_corner is not None:
+            msg = f"코너 {self.selected_corner+1} 선택됨 — 새 위치를 클릭하세요  [Esc]=선택 취소"
+            put_text_kr(disp, msg, (8, 6), 15, (0, 200, 255))
+        elif n_done < 4:
+            put_text_kr(disp, f">>> {corner_labels[n_done]}  클릭으로 지정", (8, 6), 15, (0, 220, 255))
         else:
-            put_text_kr(disp, "캘리브레이션 완료! 아무 키나 누르세요", (16, 10), 16, (0, 255, 100))
-            if self.calibrated:
-                self._draw_grid_overlay(disp)
-        cv2.rectangle(disp, (10, _DISP_H - 30), (380, _DISP_H - 4), (0, 0, 0), -1)
-        put_text_kr(disp, "[D]=기본값 적용  [클릭]=코너 지정", (16, _DISP_H - 28), 14, (180, 180, 180))
+            put_text_kr(disp, "캘리브레이션 완료  [K]=어노테이션 시작  코너 클릭=위치 수정", (8, 6), 15, (0, 255, 100))
+        put_text_kr(disp, "[D]=기본값  [N]=전체초기화  [K]=어노테이션 전환", (8, 30), 13, (160, 160, 160))
+
+        # 우측 패널: 코너 목록
+        panel_x = _DISP_W - 220
+        cv2.rectangle(disp, (panel_x - 4, 54), (_DISP_W, 54 + len(corner_labels)*20 + 6), (0,0,0), -1)
+        for i, lbl in enumerate(corner_labels):
+            clr = (0, 200, 255) if self.selected_corner == i else \
+                  (0, 255, 80) if i < len(self.corners_px) else (100, 100, 100)
+            px_txt = ""
+            if i < len(self.corners_px):
+                px_txt = f"  → ({int(self.corners_px[i][0])},{int(self.corners_px[i][1])})"
+            cv2.putText(disp, lbl + px_txt, (panel_x, 70 + i * 20),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.42, clr, 1, cv2.LINE_AA)
+
         return disp
 
     def _draw_grid_overlay(self, disp: np.ndarray):
@@ -478,22 +513,46 @@ class AnnotateTool:
         return hud
 
     # ── Mouse callback ───────────────────────────────────────────────
+    def _corner_hit(self, sx: int, sy: int, threshold: int = 20) -> Optional[int]:
+        """화면 좌표(sx,sy)에서 가장 가까운 기존 코너 인덱스. threshold 이내면 반환."""
+        best_i, best_d = None, threshold
+        for i, (px, py) in enumerate(self.corners_px):
+            dx = sx - int(px * _DISP_W / _CAM_W)
+            dy = sy - int(py * _DISP_H / _CAM_H)
+            d = (dx*dx + dy*dy) ** 0.5
+            if d < best_d:
+                best_d, best_i = d, i
+        return best_i
+
     def _mouse_cb(self, event, x, y, flags, param):
         if event != cv2.EVENT_LBUTTONDOWN:
             return
-        # 카메라 뷰 영역(0..DISP_W)만 처리
         if x >= _DISP_W:
             return
-        if not self.calibrated:
-            # 캘리브레이션 클릭
-            orig_x = x * _CAM_W / _DISP_W
-            orig_y = y * _CAM_H / _DISP_H
-            if len(self.corners_px) < 4:
-                self.corners_px.append((orig_x, orig_y))
-                print(f"[Calib] 코너 {len(self.corners_px)}: ({orig_x:.0f}, {orig_y:.0f})")
-                if len(self.corners_px) == 4:
-                    self._build_H()
-                    self._save_corners()
+        orig_x = x * _CAM_W / _DISP_W
+        orig_y = y * _CAM_H / _DISP_H
+
+        if self.calib_mode:
+            if self.selected_corner is not None:
+                # 선택된 코너를 새 위치로 이동
+                self.corners_px[self.selected_corner] = (orig_x, orig_y)
+                print(f"[Calib] 코너 {self.selected_corner+1} 이동 → ({orig_x:.0f}, {orig_y:.0f})")
+                self.selected_corner = None
+                self._build_H()
+                self._save_corners()
+            else:
+                hit = self._corner_hit(x, y)
+                if hit is not None:
+                    # 기존 코너 선택 (이동 대기)
+                    self.selected_corner = hit
+                    print(f"[Calib] 코너 {hit+1} 선택 — 새 위치를 클릭하세요")
+                elif len(self.corners_px) < 4:
+                    # 새 코너 추가
+                    self.corners_px.append((orig_x, orig_y))
+                    print(f"[Calib] 코너 {len(self.corners_px)} 추가: ({orig_x:.0f}, {orig_y:.0f})")
+                    if len(self.corners_px) == 4:
+                        self._build_H()
+                        self._save_corners()
         else:
             self._add_point_from_display(x, y)
 
@@ -501,12 +560,40 @@ class AnnotateTool:
     def _handle_key(self, key: int) -> bool:
         if key == -1:
             return True
-        if key == ord('q') or key == 27:
+        # Q / Esc 처리 — 캘리브레이션 모드에서 Esc는 선택 취소
+        if key == ord('q'):
             if self.saved:
                 self.write_csv()
             return False
-        # 프레임 이동
-        elif key == ord(' '):
+        if key == 27:  # Esc
+            if self.calib_mode and self.selected_corner is not None:
+                self.selected_corner = None
+                print("[Calib] 선택 취소")
+            elif self.saved:
+                self.write_csv()
+                return False
+            return True
+        # K — 캘리브레이션 ↔ 어노테이션 모드 전환
+        elif key == ord('k') or key == ord('K'):
+            if self.calibrated:
+                self.calib_mode = not self.calib_mode
+                self.selected_corner = None
+                mode_str = "캘리브레이션" if self.calib_mode else "어노테이션"
+                print(f"[Annotate] {mode_str} 모드 전환")
+            else:
+                print("[Annotate] 캘리브레이션 먼저 완료하세요 (코너 4개 필요)")
+        # 캘리브레이션 모드 전용 키
+        elif self.calib_mode:
+            if key == ord('d') or key == ord('D'):
+                self._apply_default_corners()
+            elif key == ord('n') or key == ord('N'):
+                self.corners_px.clear()
+                self.H = None
+                self.calibrated = False
+                self.selected_corner = None
+                print("[Calib] 코너 전체 초기화")
+        # 프레임 이동 — 캘리브레이션/어노테이션 양쪽 모드에서 동작
+        if key == ord(' '):
             self._advance(30)
         elif key == ord('.'):
             self._advance(5)
@@ -516,11 +603,12 @@ class AnnotateTool:
             self._advance(1)
         elif key in (ord('b'), ord('B')):
             self._advance(-1)
-        # 기본 코너 적용 (캘리브레이션 중)
-        elif key == ord('d') and not self.calibrated:
-            self._apply_default_corners()
+        # 캘리브레이션 모드면 여기서 종료
+        if self.calib_mode:
+            return True
+        # ── 어노테이션 모드 전용 키 ──────────────────────────────
         # 선수 선택
-        elif key == ord('1'):
+        if key == ord('1'):
             self.active_pid = 1; print("[Annotate] P1 선택")
         elif key == ord('2'):
             self.active_pid = 2; print("[Annotate] P2 선택")
@@ -582,11 +670,11 @@ class AnnotateTool:
         print(f"영상: {self.video_path.name}  ({self.total}프레임, {self.total/self.fps:.0f}초)")
         print(f"팀: {self.team}  |  패턴 시작 ID: {self.pattern_id}")
         print("=" * 60)
-        if not self.calibrated:
-            print(">>> 먼저 코트 모서리 4곳을 클릭하거나 [D]로 기본값 적용")
+        if self.calib_mode:
+            print(">>> [D]=기본값 적용  [N]=전체초기화  코너 클릭=선택후이동  [K]=어노테이션 전환")
 
         while True:
-            if not self.calibrated:
+            if self.calib_mode:
                 display = self._render_calib()
             else:
                 display = self._render_annotate()
