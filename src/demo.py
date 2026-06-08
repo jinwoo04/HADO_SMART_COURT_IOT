@@ -41,6 +41,7 @@ _COURT_W = 10.0
 _COURT_H = 6.0
 _FRAME_W, _FRAME_H = 1280, 720
 _CSV_PATH = PROJECT_ROOT / "data" / "movement_data.csv"
+_CSV_PATH_ANNOTATED = PROJECT_ROOT / "data" / "movement_data_annotated.csv"
 _CONFIG_PATH = PROJECT_ROOT / "config" / "court_config.yaml"
 
 
@@ -93,17 +94,23 @@ _PLAYER_ROLES = {
 
 
 # ---------- 패턴 라이브러리 로드 ----------
-def _load_pattern_library(team: str = "A") -> dict[str, dict[str, list[list[dict]]]]:
+def _load_pattern_library(
+    team: str = "A",
+    csv_path: Path | None = None,
+    player_id: int | None = None,
+) -> dict[str, dict[str, list[list[dict]]]]:
     """CSV → {role: {context: [[step_dict, ...], ...]}} 구조로 로드.
 
     team 필터: team A 패턴(x=0-5m)만 사용.
-    team B 패턴(x=5-10m)이 포함되면 _load_step() 클램핑으로
-    모든 선수가 x=4.9m(경계선)에 몰리는 버그 발생.
+    player_id 필터: 특정 선수의 패턴만 로드할 때 사용.
     """
-    if not _CSV_PATH.exists():
+    path = csv_path or _CSV_PATH
+    if not path.exists():
         return {}
-    rows = list(csv.DictReader(_CSV_PATH.open(encoding="utf-8")))
+    rows = list(csv.DictReader(path.open(encoding="utf-8")))
     rows = [r for r in rows if r.get("team", "A") == team]
+    if player_id is not None:
+        rows = [r for r in rows if int(r.get("player_id", 0)) == player_id]
 
     by_pat: dict[int, list[dict]] = defaultdict(list)
     for row in rows:
@@ -542,14 +549,27 @@ def run(args) -> int:
         tactic_engine._team_assignment[tid] = "A"
 
     # PatternPlayer 초기화 — 팀A 3명만 (발표용 단순화)
-    pat_lib = _load_pattern_library()
-    n_roles = {r: sum(len(v) for v in ctxs.values()) for r, ctxs in pat_lib.items()}
-    print(f"[Demo] 패턴 라이브러리: { {_ROLE_KO.get(r,r): n for r,n in n_roles.items()} }")
+    csv_override = Path(args.csv) if getattr(args, "csv", None) else None
+
+    def _pat(pid: int, role: str) -> dict:
+        # csv 지정 시 player_id로 분리, 기본 CSV는 role 풀 전체 공유
+        if csv_override:
+            return _load_pattern_library(csv_path=csv_override, player_id=pid)
+        lib = _load_pattern_library()
+        return {role: lib.get(role, {})}
+
+    pat1 = _pat(1, "technician")
+    pat2 = _pat(2, "technician")
+    pat3 = _pat(3, "main_attacker")
+
+    for pid, lib in [(1, pat1), (2, pat2), (3, pat3)]:
+        n = sum(len(v) for ctxs in lib.values() for v in ctxs.values())
+        print(f"[Demo] P{pid} 패턴: {n}개")
 
     sim: dict[int, PatternPlayer] = {
-        1: PatternPlayer(pat_lib.get("technician",    {}), "A", (1.5, 1.0), seed=1, role_name="technician"),
-        2: PatternPlayer(pat_lib.get("defender",      {}), "A", (0.8, 3.0), seed=2, role_name="defender"),
-        3: PatternPlayer(pat_lib.get("main_attacker", {}), "A", (2.8, 5.0), seed=3, role_name="main_attacker"),
+        1: PatternPlayer(pat1.get("technician",    {}), "A", (1.5, 1.0), seed=1, role_name="technician"),
+        2: PatternPlayer(pat2.get("technician",    {}), "A", (4.0, 3.0), seed=2, role_name="technician"),
+        3: PatternPlayer(pat3.get("main_attacker", {}), "A", (2.8, 1.0), seed=3, role_name="main_attacker"),
     }
 
     # 게임 페이즈 사이클: attack(9s) → transition(2s) → defend(8s) → transition(2s)
@@ -715,6 +735,8 @@ def main():
     parser.add_argument("--headless", action="store_true", help="창 없이 실행")
     parser.add_argument("--frames", type=int, default=600,
                         help="총 프레임 수 (600=20초 @30fps)")
+    parser.add_argument("--csv", type=str, default=None,
+                        help="패턴 CSV 경로 (기본: data/movement_data.csv)")
     raise SystemExit(run(parser.parse_args()))
 
 
