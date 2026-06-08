@@ -79,6 +79,132 @@ POSTURE_TO_INTENT = {
     "neutral": "",
 }
 
+# ── HADO 6동작 분류기 ────────────────────────────────────────────
+ACTION_KO: dict[str, str] = {
+    "shoot":   "공격 발사",
+    "shield":  "쉴드 방어",
+    "dodge_l": "회피 좌",
+    "dodge_r": "회피 우",
+    "crouch":  "슬라이딩",
+    "ready":   "준비 자세",
+}
+
+ACTION_COLOR: dict[str, tuple[int, int, int]] = {
+    "shoot":   (30,  120, 255),   # 주황
+    "shield":  (40,  200,  80),   # 초록
+    "dodge_l": (0,   220, 255),   # 노랑
+    "dodge_r": (255, 200,   0),   # 하늘
+    "crouch":  (200,  60, 255),   # 보라
+    "ready":   (160, 160, 160),   # 회색
+}
+
+ACTION_EMOJI: dict[str, str] = {
+    "shoot":   "⚡",
+    "shield":  "🛡",
+    "dodge_l": "←",
+    "dodge_r": "→",
+    "crouch":  "↓",
+    "ready":   "●",
+}
+
+
+from dataclasses import dataclass as _dc
+
+@_dc
+class ActionResult:
+    """HADO 동작 분류 결과."""
+    action: str             # ACTION_KO 키
+    confidence: float       # 0.0~1.0
+    scores: "dict[str, float]"  # 각 동작별 원시 점수
+
+
+def classify_hado_action(det: "Detection") -> "ActionResult | None":
+    """Detection 키포인트 → HADO 6동작 분류.
+
+    판정 우선순위: 슬라이딩 > 공격발사 > 쉴드방어 > 회피좌/우 > 준비
+    """
+    if det.keypoints is None:
+        return None
+
+    kpts   = det.keypoints
+    bbox_h = max(1.0, det.y2 - det.y1)
+    bbox_w = max(1.0, det.x2 - det.x1)
+
+    def _k(i: int) -> "tuple[float,float] | None":
+        if kpts[i, 2] >= _KP_CONF_MIN:
+            return float(kpts[i, 0]), float(kpts[i, 1])
+        return None
+
+    ls, rs = _k(_LS), _k(_RS)
+    le, re = _k(_LE), _k(_RE)
+    lw, rw = _k(_LW), _k(_RW)
+    lh, rh = _k(_LH), _k(_RH)
+    lk, rk = _k(_LK), _k(_RK)
+
+    # ── 슬라이딩 점수: 어깨~무릎 수직 압축 ────────────────────
+    crouch = 0.0
+    if ls and rs and lk and rk:
+        sh_y = (ls[1] + rs[1]) / 2
+        kn_y = (lk[1] + rk[1]) / 2
+        span = kn_y - sh_y  # 직립 ≈ 0.5×bbox_h, 웅크림 ≈ 0.2×bbox_h
+        crouch = max(0.0, 1.0 - span / (0.45 * bbox_h))
+
+    # ── 공격발사 점수: 손목이 어깨보다 위에 있는 정도 ────────
+    shoot = 0.0
+    for wrist, shoulder in [(lw, ls), (rw, rs)]:
+        if wrist and shoulder:
+            # y축: 위 = 작은 값 → wrist.y < shoulder.y 일수록 올린 팔
+            raised = (shoulder[1] - wrist[1]) / bbox_h  # 양수 = 손목이 어깨 위
+            shoot = max(shoot, raised)
+
+    # ── 쉴드방어 점수: 양팔 벌림 + 양 손목 팔꿈치 위 ─────────
+    spread = 0.0
+    both_raised = False
+    if lw and ls:
+        spread = max(spread, abs(lw[0] - ls[0]) / bbox_w)
+    if rw and rs:
+        spread = max(spread, abs(rw[0] - rs[0]) / bbox_w)
+    lw_raised = (lw and le) and (lw[1] < le[1])  # 왼손목이 왼팔꿈치보다 위
+    rw_raised = (rw and re) and (rw[1] < re[1])
+    both_raised = bool(lw_raised and rw_raised)
+    shield = spread * (1.2 if both_raised else 0.6)
+
+    # ── 회피 점수: 어깨 중점이 엉덩이 중점에서 수평으로 벗어난 정도 ──
+    dodge_l = dodge_r = 0.0
+    if ls and rs and lh and rh:
+        sh_cx = (ls[0] + rs[0]) / 2
+        hi_cx = (lh[0] + rh[0]) / 2
+        lean  = (sh_cx - hi_cx) / bbox_w   # 양수 = 어깨가 오른쪽
+        if lean < 0:
+            dodge_l = min(1.0, abs(lean) * 3)
+        else:
+            dodge_r = min(1.0, lean * 3)
+
+    scores = {
+        "crouch":  round(crouch,  3),
+        "shoot":   round(shoot,   3),
+        "shield":  round(shield,  3),
+        "dodge_l": round(dodge_l, 3),
+        "dodge_r": round(dodge_r, 3),
+        "ready":   0.0,
+    }
+
+    # 우선순위 판정
+    if crouch > 0.55:
+        action, conf = "crouch", crouch
+    elif shoot > 0.25:
+        action, conf = "shoot", min(1.0, shoot * 2)
+    elif shield > 0.55:
+        action, conf = "shield", min(1.0, shield)
+    elif dodge_l > 0.30:
+        action, conf = "dodge_l", dodge_l
+    elif dodge_r > 0.30:
+        action, conf = "dodge_r", dodge_r
+    else:
+        action, conf = "ready", 1.0 - max(crouch, shoot, shield, dodge_l, dodge_r)
+
+    return ActionResult(action=action, confidence=round(conf, 3), scores=scores)
+
 
 # ── 데이터클래스 ───────────────────────────────────────────────
 @dataclass
