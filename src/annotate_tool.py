@@ -43,6 +43,7 @@ from typing import Optional
 
 import cv2
 import numpy as np
+from src.annotate import put_text_kr
 
 # ─── 경로 ───────────────────────────────────────────────────────────
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -288,19 +289,17 @@ class AnnotateTool:
             cv2.circle(disp, (sx, sy), 8, (0, 255, 0), -1)
             cv2.putText(disp, str(i + 1), (sx + 10, sy - 5),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
-        # 다음 클릭 안내
+        # 배경 반투명 박스
+        cv2.rectangle(disp, (10, 6), (700, 38), (0, 0, 0), -1)
         n_done = len(self.corners_px)
         if n_done < 4:
-            cv2.putText(disp, f">>> {labels[n_done]}",
-                        (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 220, 255), 2)
+            put_text_kr(disp, f">>> {labels[n_done]}", (16, 10), 16, (0, 220, 255))
         else:
-            cv2.putText(disp, "캘리브레이션 완료! 아무 키나 누르세요",
-                        (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 100), 2)
+            put_text_kr(disp, "캘리브레이션 완료! 아무 키나 누르세요", (16, 10), 16, (0, 255, 100))
             if self.calibrated:
                 self._draw_grid_overlay(disp)
-        cv2.putText(disp, "[D]=기본값 적용  [클릭]=코너 지정",
-                    (20, _DISP_H - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.55,
-                    (180, 180, 180), 1)
+        cv2.rectangle(disp, (10, _DISP_H - 30), (380, _DISP_H - 4), (0, 0, 0), -1)
+        put_text_kr(disp, "[D]=기본값 적용  [클릭]=코너 지정", (16, _DISP_H - 28), 14, (180, 180, 180))
         return disp
 
     def _draw_grid_overlay(self, disp: np.ndarray):
@@ -387,8 +386,8 @@ class AnnotateTool:
         txt = (f"P{self.active_pid}  {_ROLE_KO.get(tr.role,'?')} | "
                f"{_CTX_KO.get(tr.context,'?')} | "
                f"{_INTENT_KO.get(tr.intent,'?')}  ({len(tr.pts)}pts)")
-        cv2.rectangle(disp, (0, 0), (len(txt) * 9 + 12, 26), (0, 0, 0), -1)
-        cv2.putText(disp, txt, (6, 18), cv2.FONT_HERSHEY_SIMPLEX, 0.52, clr, 1)
+        cv2.rectangle(disp, (0, 0), (560, 28), (0, 0, 0), -1)
+        put_text_kr(disp, txt, (6, 6), 15, clr)
         # 프레임 정보
         secs = self.frame_idx / max(1, self.fps)
         ft = f"Frame {self.frame_idx}/{self.total}  ({secs:.1f}s / {secs/60:.1f}min)"
@@ -450,30 +449,32 @@ class AnnotateTool:
 
     def _render_hud(self) -> np.ndarray:
         W = int(10.0 * _PX_M)
-        lines = [
-            f"팀: {self.team}  패턴: {self.pattern_id - self.base_pid}저장  미기록: {len(self.saved)}행",
+        LINE_H = 22
+        lines: list[tuple[str, tuple[int,int,int]]] = [
+            (f"팀: {self.team}  패턴 {self.pattern_id - self.base_pid}개 저장  미기록: {len(self.saved)}행",
+             (0, 230, 100)),
         ]
         for pid in (1, 2, 3):
             tr = self.traces[pid]
-            marker = "▶" if pid == self.active_pid else " "
-            lines.append(
-                f"{marker}P{pid} [{_ROLE_KO.get(tr.role,'?')}/"
-                f"{_CTX_KO.get(tr.context,'?')}/"
-                f"{_INTENT_KO.get(tr.intent,'?')}]  {len(tr.pts)}pts"
-            )
-        lines += [
-            "─" * 35,
-            "Space+30  . +5  , -5  F+1  B-1",
-            "1/2/3=선수  T/D/M=역할  A/V/R=컨텍스트",
-            "I/U=의도  클릭=마킹  Z=취소",
-            "Enter=저장  C=초기화  S=CSV  Q=종료",
+            marker = "▶ " if pid == self.active_pid else "   "
+            lines.append((
+                f"{marker}P{pid} [{_ROLE_KO.get(tr.role,'?')} / "
+                f"{_CTX_KO.get(tr.context,'?')} / "
+                f"{_INTENT_KO.get(tr.intent,'?')}]  {len(tr.pts)}pts",
+                _P_COLOR[pid] if pid == self.active_pid else (160, 170, 160),
+            ))
+        sep = ("─" * 42, (60, 60, 60))
+        shortcuts = [
+            ("Space+30프레임  . +5  , -5  F/B ±1프레임", (140, 140, 140)),
+            ("1/2/3=선수선택  T=테크니션 D=디펜더 M=어태커", (140, 140, 140)),
+            ("A=공격 V=수비 R=전환  I/U=의도순환", (140, 140, 140)),
+            ("클릭=위치마킹  Z=취소  Enter=저장  C=초기화  S/Q=저장종료", (140, 140, 140)),
         ]
-        hud_h = len(lines) * 20 + 10
-        hud = np.full((hud_h, W, 3), (25, 25, 25), np.uint8)
-        for i, line in enumerate(lines):
-            cv2.putText(hud, line, (6, 18 + i * 20),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.48,
-                        (0, 230, 100) if i == 0 else (180, 200, 180), 1)
+        all_lines = lines + [sep] + shortcuts
+        hud_h = len(all_lines) * LINE_H + 8
+        hud = np.full((hud_h, W, 3), (22, 22, 22), np.uint8)
+        for i, (text, clr) in enumerate(all_lines):
+            put_text_kr(hud, text, (6, 4 + i * LINE_H), 14, clr)
         return hud
 
     # ── Mouse callback ───────────────────────────────────────────────
