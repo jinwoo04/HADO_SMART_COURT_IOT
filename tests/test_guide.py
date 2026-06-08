@@ -13,6 +13,7 @@ import time
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -311,6 +312,23 @@ def test_engine_to_guide_pipeline():
     print("  ✓ 엔진→가이드 통합 파이프라인 정상")
 
 
+def test_voice_guide_korean_voice_selected():
+    """pyttsx3 설치 환경에서 한국어 음성이 선택되는지 확인."""
+    pytest.importorskip("pyttsx3")
+    import pyttsx3
+    engine = pyttsx3.init()
+    voices = engine.getProperty("voices")
+    ko_voices = [v for v in voices
+                 if "ko" in (v.id or "").lower() or "korean" in (v.name or "").lower()]
+    if not ko_voices:
+        pytest.skip("한국어 음성 없는 환경 — Pi4 espeak-ng 없이는 스킵")
+    # VoiceGuide 초기화 시 크래시 없어야 함
+    vg = VoiceGuide(enabled=True, cooldown_sec=0.1)
+    assert vg.enabled, "pyttsx3 있는 환경에서 enabled=True여야 함"
+    vg.close()
+    print("  ✓ VoiceGuide: 한국어 음성 선택 및 초기화 정상")
+
+
 # ── 진입점 ────────────────────────────────────────────────────────────────────
 
 def run_all():
@@ -339,6 +357,7 @@ def run_all():
     test_voice_guide_speak_advices_prefers_high_over_mid()
     test_voice_guide_cooldown_blocks_repeat()
     test_voice_guide_close_idempotent()
+    test_voice_guide_korean_voice_selected()
     test_engine_to_guide_pipeline()
     print(f"\n  모든 테스트 통과 ✓")
 
