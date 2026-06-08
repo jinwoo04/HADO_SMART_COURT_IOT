@@ -141,6 +141,18 @@ HUD 구성:
   기타:                 121개
 ```
 
+## 4.1 새벽 코드 리뷰 수정 사항 (2026-06-09)
+
+| 파일 | 버그 | 심각도 | 수정 내용 |
+|------|------|--------|-----------|
+| `camera.py` | `threaded=True` 시 첫 `read()` → `(False, zeros)` 반환 → 메인 루프 즉시 종료 | **High** | `(True, zeros)` 반환으로 변경 |
+| `action_demo.py` | 모듈 docstring "6동작" (실제 7동작) | Low | 7동작 + 차지 준비 항목 추가 |
+| `action_demo.py` | `bar_w = (w-200)*conf` — width < 200 시 음수 | Low | `max(0, ...)` guard 추가 |
+| `action_demo.py` | 점수 막대 배경 rect가 "ready" 행 포함해 1칸 과대 | Low | `visible_count` 계산으로 정확히 처리 |
+| `pose.py` | "HADO 6동작 분류기" 주석 오기 | Low | "7동작"으로 정정 |
+
+**스모크 테스트**: `python -m src.action_demo --max-frames 5 --headless` → 5프레임 36.5 FPS 정상 종료
+
 ---
 
 ## 5. 실측 데이터 (W5 예정)
