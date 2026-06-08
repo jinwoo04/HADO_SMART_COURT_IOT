@@ -155,7 +155,25 @@ source ~/hado_venv/bin/activate
 
 ---
 
-## 11. 남은 작업 (W5–W6)
+## 11. 완료된 작업 (2026-06-09 야간 — HADO_iot 팀원 자료 반영)
+
+출처: `HADO_iot/` 폴더 (팀원 정준혁). Pi4+Node.js 아키텍처에서 standalone Python에 이식 가능한 최적화 추출.
+
+| 항목 | 파일 | 내용 |
+|------|------|------|
+| CAP_PROP_BUFFERSIZE=1 | `camera.py` | 프레임 버퍼 최신 1장만 유지 → 지연 제거 |
+| 스레드 캡처 | `camera.py` | `threaded=True` → I/O와 추론 분리 |
+| NCNN 자동 선택 | `action_demo.py` | NCNN>ONNX>.pt 우선순위, `--threaded` 플래그 |
+| charge 동작 추가 | `pose.py` | 팔 수직 들어올림(차지) vs 팔 앞 뻗기(shoot) 구분 |
+| 스케일 정규화 | `pose.py` | shoulder_w+torso_h 기반 → 카메라 거리 무관 |
+| 팀 방향 인식 | `pose.py` | `frame_center_x` → shoot 판정 시 전방 방향만 인정 |
+| sample_vest_hue() | `pose.py` | 토르소 HSV 원형평균 hue → 역할 cold-start 신호 |
+| R6 레인 집중 | `tactic_engine.py` | 적 ≥60% 상단/하단 집중 시 레인 커버 지시 |
+| 테스트 13개 추가 | `tests/` | 총 **180개** 통과 |
+
+---
+
+## 12. 남은 작업 (W5–W6)
 
 - W5 (6/11-17): Pi 4 실측 (fps, RAM, 온도, 위치 오차) → `docs/QA_PREP.md` [TODO] 채우기
 - W6 (6/18-22): Final report §5 실측 데이터 기입, Q&A 영어 리허설 5회
@@ -166,6 +184,13 @@ Claude Code 최신 상세 인계:
   - Track A 발표용 설명 흐름
   - Track B V4 player-only 모델 결과 및 실제 영상 smoke test
   - 다음 Claude Code 작업 지시
+- `docs/TRACK_B_BATCH01_INTAKE_2026_06_08.md`
+  - Drive 10경기 import 결과
+  - `tools/process_track_b_video_batch.py` 배치 사용법
+  - hard frame relabeling 우선순위
+- `docs/TRACK_B_NEXT_ACTIONS_2026_06_09.md`
+  - 사용자가 깨어난 뒤 바로 따라갈 Track B 실행 순서
+  - phase1/priority ZIP 사용법
 
 ---
 
@@ -182,7 +207,7 @@ Claude Code 최신 상세 인계:
 
 ### 제출 체크리스트
 
-- [x] Code in `src/` + tests (159개 통과)
+- [x] Code in `src/` + tests (180개 통과)
 - [x] README.md
 - [x] Final report `.docx` — §5 실측 데이터 미기입
 - [x] Final PPT `.pptx` — 실측 데이터 미기입
