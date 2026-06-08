@@ -4,4 +4,4 @@ ultralytics>=8.2.0
 pyyaml>=6.0
 # Pi 전용 (라즈베리파이에서만 설치)
 # picamera2>=0.3.18
-# pyttsx3>=2.90
+pyttsx3>=2.90   # TTS: Mac=NSSpeechSynthesizer, Pi4=espeak-ng (sudo apt install espeak-ng)

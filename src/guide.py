@@ -238,7 +238,7 @@ class VoiceGuide:
     - pyttsx3가 없으면 자동으로 no-op (개발 환경 호환)
     """
 
-    def __init__(self, cooldown_sec: float = 3.0, rate: int = 180, enabled: bool = True):
+    def __init__(self, cooldown_sec: float = 3.0, rate: int = 200, enabled: bool = True):
         self.cooldown_sec = cooldown_sec
         self.enabled = enabled
         self._engine = None
@@ -253,11 +253,7 @@ class VoiceGuide:
             import pyttsx3  # type: ignore
             self._engine = pyttsx3.init()
             self._engine.setProperty("rate", rate)
-            # 한국어 음성이 시스템에 있으면 사용 시도
-            for v in self._engine.getProperty("voices"):
-                if "ko" in (v.id or "").lower() or "korean" in (v.name or "").lower():
-                    self._engine.setProperty("voice", v.id)
-                    break
+            self._select_korean_voice()
         except ImportError:
             print("[VoiceGuide] pyttsx3 없음 — 음성 비활성화")
             self.enabled = False
@@ -270,6 +266,24 @@ class VoiceGuide:
         self._thread = threading.Thread(target=self._worker, daemon=True)
         self._thread.start()
         print("[VoiceGuide] 음성 가이드 준비 완료")
+
+    def _select_korean_voice(self) -> None:
+        """한국어 음성 선택 — Yuna(Mac) > ko-KR compact > ko 포함 > 기본 유지."""
+        voices = self._engine.getProperty("voices")
+        selected: Optional[str] = None
+        for v in voices:
+            vid = (v.id or "").lower()
+            vname = (v.name or "").lower()
+            if "yuna" in vid:           # Mac 최고품질 한국어 compact
+                selected = v.id
+                break
+            if selected is None and "ko-kr" in vid and "compact" in vid:
+                selected = v.id
+            elif selected is None and ("ko" in vid or "korean" in vname):
+                selected = v.id
+        if selected:
+            self._engine.setProperty("voice", selected)
+            print(f"[VoiceGuide] 한국어 음성: {selected.split('.')[-1]}")
 
     def speak(self, text: str):
         """음성 안내 큐에 추가. cooldown 내 동일 메시지는 무시."""
