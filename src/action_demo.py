@@ -1,10 +1,11 @@
 """HADO 실시간 동작 인식 데모.
 
 카메라(Pi USB 카메라 / 웹캠)에서 YOLOv8n-pose 키포인트를 추출하고
-HADO 6동작을 실시간 분류해 화면에 표시한다.
+HADO 7동작을 실시간 분류해 화면에 표시한다.
 
 동작 클래스:
-  ⚡ 공격 발사   — 한 팔 이상 어깨 위로 들어올림
+  ↑  차지 준비   — 팔을 수직으로 들어올림 (에너지구 충전)
+  ⚡ 공격 발사   — 팔을 팀 전방으로 뻗음
   🛡 쉴드 방어   — 양팔 넓게 벌려 올림
   ←  회피 좌     — 상체가 왼쪽으로 기울어짐
   →  회피 우     — 상체가 오른쪽으로 기울어짐
@@ -87,7 +88,7 @@ def _draw_action_panel(
     _put_kr(img, f"{emoji}  {label}", (20, y0 + 14), 28, color)
 
     # 신뢰도 바
-    bar_w = int((w - 200) * min(1.0, conf))
+    bar_w = max(0, int((w - 200) * min(1.0, conf)))
     bar_y = y0 + 56
     cv2.rectangle(img, (20, bar_y), (w - 180, bar_y + _BAR_H), (50, 50, 50), -1)
     cv2.rectangle(img, (20, bar_y), (20 + bar_w, bar_y + _BAR_H), color, -1)
@@ -110,9 +111,11 @@ def _draw_score_bars(
     y0 = 10
     line_h = 22
 
+    # "ready"는 항상 마지막이고 항상 건너뛰므로 배경 높이에서 제외
+    visible_count = sum(1 for a in scores if a != "ready")
     overlay = img.copy()
     cv2.rectangle(overlay, (x0 - 6, y0 - 4),
-                  (w - 4, y0 + len(scores) * line_h + 4), (18, 18, 18), -1)
+                  (w - 4, y0 + visible_count * line_h + 4), (18, 18, 18), -1)
     cv2.addWeighted(overlay, 0.70, img, 0.30, 0, img)
 
     for i, (action, score) in enumerate(scores.items()):

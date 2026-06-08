@@ -161,7 +161,9 @@ class Camera:
             if self._threaded:
                 with self._frame_lock:
                     if self._latest_frame is None:
-                        return False, np.zeros((self.height, self.width, 3), dtype=np.uint8)
+                        # 스레드가 아직 첫 프레임을 캡처하지 못한 경우:
+                        # False 반환 시 호출부 루프가 종료되므로 True + zeros 반환
+                        return True, np.zeros((self.height, self.width, 3), dtype=np.uint8)
                     return True, self._latest_frame.copy()
             return self._cap.read()
         else:
