@@ -382,12 +382,13 @@ class TacticEngine:
 def main():
     engine = TacticEngine()
 
-    # 2 vs 2 시나리오: 팀 A가 코트 왼쪽, 팀 B가 오른쪽
+    # 2 vs 2 시나리오: 팀 A 왼쪽(x<5), 팀 B 오른쪽(x>5)
+    # B 선수는 반드시 x>5.0이어야 Team B로 자동 배정됨
     players = [
         PlayerState(track_id=1, court_x=1.5, court_y=1.0),   # A1
-        PlayerState(track_id=2, court_x=1.6, court_y=1.1),   # A2 — 너무 붙음
-        PlayerState(track_id=3, court_x=4.5, court_y=0.5),   # B1
-        PlayerState(track_id=4, court_x=4.5, court_y=2.2),   # B2 — 사이 갭 큼
+        PlayerState(track_id=2, court_x=1.6, court_y=1.1),   # A2 — 너무 붙음 → R1
+        PlayerState(track_id=3, court_x=5.5, court_y=0.5),   # B1 — 상단 레인
+        PlayerState(track_id=4, court_x=5.5, court_y=2.2),   # B2 — 하단 레인, 갭 큼
     ]
 
     advices = engine.analyze(players)
