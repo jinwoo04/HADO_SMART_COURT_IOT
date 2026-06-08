@@ -132,7 +132,7 @@
 
 **자막**:
 > "Level 2 — Rule-based tactical engine"
-> "5 rules: Spacing · Coverage · Counter · Gap Attack · Backline"
+> "6 rules: Spacing · Coverage · Lane Cover · Counter · Gap Attack · Backline"
 > "Visual arrows + Korean TTS voice prompts"
 
 **촬영 팁**:

@@ -119,7 +119,9 @@ Future improvement would be having multiple HADO veterans annotate independently
 
 ### Q12. What if two rules apply simultaneously?
 
-**A.** They're evaluated in priority order: R5 (backline) > R3 (counter) > R1 (spacing) > R4 (gap attack) > R2 (coverage). The first match wins. Priority was chosen so that **defensive HIGH-urgency rules fire before offensive MID-urgency ones**, which matches HADO coaching philosophy ("don't get hit before scoring").
+**A.** They're evaluated in priority order: R5 (backline) > R3 (counter) > R1 (spacing) > R6 (lane cover) > R4 (gap attack) > R2 (coverage). The first match wins. Priority was chosen so that **defensive HIGH-urgency rules fire before offensive MID-urgency ones**, which matches HADO coaching philosophy ("don't get hit before scoring").
+
+R6 was added after R1 because lane imbalance is a positional problem that's less urgent than individual spacing but more time-sensitive than gap seeking — if all three opponents stack one lane, responding immediately is worth more than waiting for a gap.
 
 ---
 
@@ -194,6 +196,19 @@ A close second: getting reliable 15+ fps on the Pi 4 CPU. Image size reduction (
 
 ---
 
+### Q23. You mentioned action recognition — how does that work, and how accurate is it?
+
+**A.** The system classifies 7 HADO-specific actions in real time from a single camera using YOLOv8n-pose keypoints: *charge, shoot, shield, dodge left, dodge right, crouch, ready*.
+
+Three design decisions made it work reliably:
+1. **Scale normalization** — All thresholds are divided by `max(shoulder_width, torso_height×0.6, 30 px)`. This makes the classifier camera-distance invariant; the same threshold values work whether the player is 2 m or 5 m from the camera.
+2. **Team-direction awareness** — "Shoot" only fires when the wrist extends *toward the opponent side*. Without this, reaching backward during a shield recharge would be mislabeled as an attack.
+3. **Priority chain** — Crouch > Charge > Shoot > Shield > Dodge > Ready. This mirrors HADO play logic: a crouching player is nearly always dodging, which overrides ambiguous arm positions.
+
+For accuracy: informal testing on my own movements showed correct classification on roughly **[TODO: X]%** of deliberate single-action poses. Fast transitions and occlusion of the arms are the main failure cases.
+
+---
+
 ### Q22. What would you do differently if you started over?
 
 **A.** Three things.
@@ -205,6 +220,7 @@ A close second: getting reliable 15+ fps on the Pi 4 CPU. Image size reduction (
 
 ## 자가 점검 — 본 발표 전 자신에게 물어볼 것
 
+- [ ] Q23 [TODO] 자리에 실측 정확도 % 채워 넣었는가?
 - [ ] 모든 [TODO] 자리에 실측치 채워 넣었는가?
 - [ ] 답변을 영어로 매끄럽게 말할 수 있는가? — 거울 보고 5회 리허설
 - [ ] 한 문장 안에 동사 두 번 안 쓰는가?
