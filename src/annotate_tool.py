@@ -56,23 +56,28 @@ _CSV_FIELDS    = [
     "context", "intent", "timestamp",
 ]
 
-# 윈터컵 결승 2경기 기본 코너 (픽셀) — 필요시 캘리브레이션으로 정밀 조정
-_DEFAULT_CORNERS_WINTER = np.array([
-    [ 85.0, 500.0],  # (1) 좌하단 near-left  → (x=0m,  y=6m)
-    [1195.0, 500.0], # (2) 우하단 near-right → (x=10m, y=6m)
-    [1185.0, 148.0], # (3) 우상단 far-right  → (x=10m, y=0m)
-    [  90.0, 148.0], # (4) 좌상단 far-left   → (x=0m,  y=0m)
-], dtype=np.float32)
-
-# 풀코트 (0-10m × 0-6m)
-_COURT_FULL_M = np.array([
-    [ 0.0, 6.0], [10.0, 6.0], [10.0, 0.0], [ 0.0, 0.0]
-], dtype=np.float32)
-
-# 반코트 (팀A 0-5m / 팀B 5-10m)
+# 팀별 반코트 좌표 (court meters) — 캘리브레이션 기준
+# 코너 순서: (1)좌하 → (2)우하 → (3)우상 → (4)좌상
 _COURT_HALF_M: dict[str, np.ndarray] = {
     "A": np.array([[0.0,6.0],[5.0,6.0],[5.0,0.0],[0.0,0.0]], dtype=np.float32),
     "B": np.array([[5.0,6.0],[10.0,6.0],[10.0,0.0],[5.0,0.0]], dtype=np.float32),
+}
+
+# 팀별 기본 픽셀 코너 (윈터컵 결승 2경기, 1280×720 기준)
+# A팀(RGB, 화면 왼쪽): x≈85~640px  B팀(MAJOR, 화면 오른쪽): x≈640~1195px
+_DEFAULT_CORNERS: dict[str, np.ndarray] = {
+    "A": np.array([
+        [ 85.0, 500.0],  # (1) 좌하 near-left  → (0m,  6m)
+        [640.0, 500.0],  # (2) 우하 near-right → (5m,  6m) ← 센터라인
+        [640.0, 148.0],  # (3) 우상 far-right  → (5m,  0m) ← 센터라인 위
+        [ 90.0, 148.0],  # (4) 좌상 far-left   → (0m,  0m)
+    ], dtype=np.float32),
+    "B": np.array([
+        [ 640.0, 500.0],  # (1) 좌하 near-left  → (5m,  6m) ← 센터라인
+        [1195.0, 500.0],  # (2) 우하 near-right → (10m, 6m)
+        [1185.0, 148.0],  # (3) 우상 far-right  → (10m, 0m)
+        [ 640.0, 148.0],  # (4) 좌상 far-left   → (5m,  0m) ← 센터라인 위
+    ], dtype=np.float32),
 }
 
 _ROLES    = ["main_attacker", "technician", "defender"]
@@ -189,20 +194,23 @@ class AnnotateTool:
         print(f"[Annotate] 코너 저장: {_CORNER_JSON}")
 
     def _build_H(self):
+        if len(self.corners_px) != 4:
+            return
         src = np.array(self.corners_px, dtype=np.float32)
-        # 코트 범위 판단 (풀코트 vs 반코트) — 4점 모두 입력된 경우만
-        if len(src) == 4:
-            self.H, _ = cv2.findHomography(src, _COURT_FULL_M)
-            self.calibrated = self.H is not None
-            if self.calibrated:
-                print("[Annotate] 캘리브레이션 완료 (풀코트 기준)")
+        dst = _COURT_HALF_M[self.team]   # 반코트 기준
+        self.H, _ = cv2.findHomography(src, dst)
+        self.calibrated = self.H is not None
+        if self.calibrated:
+            xlo, xhi = (0, 5) if self.team == "A" else (5, 10)
+            print(f"[Annotate] 캘리브레이션 완료 (팀{self.team} 반코트 x={xlo}-{xhi}m)")
 
     def _apply_default_corners(self):
-        self.corners_px = [tuple(r) for r in _DEFAULT_CORNERS_WINTER.tolist()]
+        self.corners_px = [tuple(r) for r in _DEFAULT_CORNERS[self.team].tolist()]
         self.selected_corner = None
         self._build_H()
         self._save_corners()
-        print("[Annotate] 기본 코너 적용 완료")
+        xlo, xhi = (0, 5) if self.team == "A" else (5, 10)
+        print(f"[Annotate] 팀{self.team} 기본 코너 적용 (x={xlo}-{xhi}m)")
 
     # ── Homography ───────────────────────────────────────────────────
     def px_to_court(self, x: float, y: float) -> tuple[float, float]:
@@ -287,11 +295,13 @@ class AnnotateTool:
         if self.calibrated:
             self._draw_grid_overlay(disp)
 
+        # 팀에 따라 반코트 x 범위 레이블
+        xs = ("0m", "5m") if self.team == "A" else ("5m", "10m")
         corner_labels = [
-            "(1) 좌하단  x=0m  y=6m",
-            "(2) 우하단  x=10m y=6m",
-            "(3) 우상단  x=10m y=0m",
-            "(4) 좌상단  x=0m  y=0m",
+            f"(1) 좌하단  x={xs[0]}  y=6m",
+            f"(2) 우하단  x={xs[1]}  y=6m",
+            f"(3) 우상단  x={xs[1]}  y=0m",
+            f"(4) 좌상단  x={xs[0]}  y=0m",
         ]
 
         # 기존 코너 표시
@@ -338,30 +348,45 @@ class AnnotateTool:
         return disp
 
     def _draw_grid_overlay(self, disp: np.ndarray):
-        """역투영으로 코트 그리드를 카메라뷰에 표시."""
+        """역투영으로 반코트 그리드를 카메라뷰에 표시."""
         if self.H is None:
             return
         H_inv = np.linalg.inv(self.H)
-        for xm in np.arange(0, 10.5, 1.0):
-            pts_m = np.array([[[xm, ym]] for ym in np.linspace(0, 6, 30)], np.float32)
+        xlo = 0.0 if self.team == "A" else 5.0
+        xhi = 5.0 if self.team == "A" else 10.0
+
+        def _proj(pts_m):
             pts_px = cv2.perspectiveTransform(pts_m, H_inv)
-            for j in range(len(pts_px) - 1):
-                p0 = (int(pts_px[j][0][0] * _DISP_W / _CAM_W),
-                      int(pts_px[j][0][1] * _DISP_H / _CAM_H))
-                p1 = (int(pts_px[j+1][0][0] * _DISP_W / _CAM_W),
-                      int(pts_px[j+1][0][1] * _DISP_H / _CAM_H))
-                clr = (100, 255, 100) if xm == 5.0 else (50, 150, 50)
-                thick = 2 if xm == 5.0 else 1
-                cv2.line(disp, p0, p1, clr, thick)
-        for ym in np.arange(0, 6.5, 1.0):
-            pts_m = np.array([[[xm, ym]] for xm in np.linspace(0, 10, 30)], np.float32)
-            pts_px = cv2.perspectiveTransform(pts_m, H_inv)
-            for j in range(len(pts_px) - 1):
-                p0 = (int(pts_px[j][0][0] * _DISP_W / _CAM_W),
-                      int(pts_px[j][0][1] * _DISP_H / _CAM_H))
-                p1 = (int(pts_px[j+1][0][0] * _DISP_W / _CAM_W),
-                      int(pts_px[j+1][0][1] * _DISP_H / _CAM_H))
-                cv2.line(disp, p0, p1, (50, 150, 50), 1)
+            return [(int(p[0][0] * _DISP_W / _CAM_W),
+                     int(p[0][1] * _DISP_H / _CAM_H)) for p in pts_px]
+
+        # 세로선 (x방향)
+        for xm in np.arange(xlo, xhi + 0.1, 1.0):
+            pts = np.array([[[xm, ym]] for ym in np.linspace(0, 6, 30)], np.float32)
+            pxs = _proj(pts)
+            # 경계선은 밝게, 레인선(y=2,4)은 초록, 나머지는 어둡게
+            is_boundary = abs(xm - xlo) < 0.05 or abs(xm - xhi) < 0.05
+            clr = (180, 255, 180) if is_boundary else (50, 130, 50)
+            thick = 2 if is_boundary else 1
+            for j in range(len(pxs) - 1):
+                cv2.line(disp, pxs[j], pxs[j+1], clr, thick)
+
+        # 가로선 (y방향)
+        for ym in np.arange(0, 6.1, 1.0):
+            pts = np.array([[[xm, ym]] for xm in np.linspace(xlo, xhi, 30)], np.float32)
+            pxs = _proj(pts)
+            is_lane = abs(ym - 2.0) < 0.05 or abs(ym - 4.0) < 0.05
+            clr = (60, 200, 60) if is_lane else (50, 100, 50)
+            thick = 2 if is_lane else 1
+            for j in range(len(pxs) - 1):
+                cv2.line(disp, pxs[j], pxs[j+1], clr, thick)
+
+        # x 눈금 레이블
+        for xm in np.arange(xlo, xhi + 0.1, 1.0):
+            pts = np.array([[[xm, 6.0]]], np.float32)
+            px = _proj(pts)[0]
+            cv2.putText(disp, f"{xm:.0f}m", (px[0] + 2, px[1] - 4),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.4, (180, 255, 180), 1)
 
     def _render_annotate(self) -> np.ndarray:
         """카메라뷰(960×540) + 버드아이뷰 + HUD."""
@@ -430,32 +455,36 @@ class AnnotateTool:
                     cv2.FONT_HERSHEY_SIMPLEX, 0.45, (180, 180, 180), 1)
 
     def _render_birdeye(self) -> np.ndarray:
-        W = int(10.0 * _PX_M)   # 550px
-        H = int(6.0  * _PX_M)   # 330px
+        """반코트(0-5m 또는 5-10m) 버드아이뷰."""
+        xlo = 0.0 if self.team == "A" else 5.0
+        xhi = 5.0 if self.team == "A" else 10.0
+        W = int(5.0 * _PX_M)   # 275px (반코트)
+        H = int(6.0 * _PX_M)   # 330px
         img = np.full((H, W, 3), (35, 45, 30), np.uint8)
         cv2.rectangle(img, (1, 1), (W - 2, H - 2), (200, 200, 200), 2)
 
         def m2px(mx: float, my: float) -> tuple[int, int]:
-            return int(mx * _PX_M), int(my * _PX_M)
+            return int((mx - xlo) * _PX_M), int(my * _PX_M)
 
-        # 팀 구분선 (x=5m)
-        cv2.line(img, m2px(5.0, 0), m2px(5.0, 6.0), (100, 255, 100), 2)
-        cv2.putText(img, "A", (int(2.5*_PX_M)-8, 14),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (100, 230, 100), 1)
-        cv2.putText(img, "B", (int(7.5*_PX_M)-8, 14),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (100, 150, 255), 1)
-
-        # 구역선 A팀: 1.5, 3.0 / B팀: 6.5, 8.5
-        for xz in [1.5, 3.0, 6.5, 8.5]:
+        # 구역선: A팀 1.5m, 3.0m / B팀 6.5m, 8.5m (반코트 내 상대좌표)
+        zone_xs = [1.5, 3.0] if self.team == "A" else [6.5, 8.5]
+        for xz in zone_xs:
             cv2.line(img, m2px(xz, 0), m2px(xz, 6.0), (180, 180, 60), 1)
         for yz in [2.0, 4.0]:
-            cv2.line(img, m2px(0, yz), m2px(10.0, yz), (60, 180, 60), 1)
+            cv2.line(img, m2px(xlo, yz), m2px(xhi, yz), (60, 180, 60), 1)
 
-        # x/y 숫자 눈금
-        for xm in range(0, 11, 2):
-            px = int(xm * _PX_M)
-            cv2.putText(img, str(xm), (px + 2, H - 4),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.3, (120, 120, 120), 1)
+        # x 눈금
+        for xm in np.arange(xlo, xhi + 0.1, 1.0):
+            px = int((xm - xlo) * _PX_M)
+            cv2.putText(img, f"{xm:.0f}", (px + 2, H - 4),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.32, (120, 120, 120), 1)
+
+        # 경계선 레이블
+        boundary_lbl = "CENTER" if self.team == "A" else "CENTER"
+        bx = W - 1 if self.team == "A" else 0
+        cv2.line(img, (bx, 0), (bx, H), (100, 255, 100), 2)
+        cv2.putText(img, boundary_lbl, (W - 58 if self.team == "A" else 2, 12),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.32, (100, 255, 100), 1)
 
         # 선수 흔적
         for pid, tr in self.traces.items():
@@ -463,23 +492,21 @@ class AnnotateTool:
                 continue
             clr = _P_COLOR[pid]
             prev = None
-            for i, (mx, my) in enumerate(tr.pts):
+            for mx, my in tr.pts:
                 px = m2px(mx, my)
-                cv2.circle(img, px, 5 if pid != self.active_pid else 7, clr,
-                           -1 if pid == self.active_pid else 1)
+                r = 7 if pid == self.active_pid else 5
+                cv2.circle(img, px, r, clr, -1 if pid == self.active_pid else 1)
                 if prev:
                     cv2.arrowedLine(img, prev, px, clr, 2,
                                     tipLength=0.25, line_type=cv2.LINE_AA)
                 prev = px
-            # 선수 번호 + 역할
             if tr.pts:
                 lx, ly = m2px(*tr.pts[-1])
                 cv2.putText(img, f"P{pid}", (lx + 6, ly - 6),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.42, clr, 1)
 
-        # 테두리 레이블
-        cv2.putText(img, "Bird-eye  (m)", (4, H - 16),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.38, (100, 100, 100), 1)
+        cv2.putText(img, f"팀{self.team} Bird-eye", (4, H - 16),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.35, (100, 100, 100), 1)
         return img
 
     def _render_hud(self) -> np.ndarray:
