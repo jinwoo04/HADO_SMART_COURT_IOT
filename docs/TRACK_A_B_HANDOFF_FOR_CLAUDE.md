@@ -4,6 +4,14 @@
 
 이 프로젝트는 현재 두 가지 목적의 작업이 같은 로컬 저장소에서 진행되고 있다. 앞으로 커밋, 브랜치, PR, 자동화 작업을 만들 때 반드시 아래 두 트랙을 구분한다.
 
+상세 최신 인계:
+- `docs/CLAUDE_CODE_CONTINUATION_BRIEF_2026_06_08.md`
+  - 중간발표 3분 영어 대본
+  - Track A 발표용 설명 흐름
+  - Track B Roboflow V4 player-only 모델 결과
+  - 실제 영상 smoke test 결과
+  - Claude Code 다음 작업 지시 포함
+
 ## Track A: IoT 발표용 버전
 
 목적:
@@ -72,6 +80,13 @@ Codex가 앞으로 우선 진행할 작업:
 2. synthetic AR/effect occlusion augmentation 유틸을 추가한다.
 3. occlusion 전용 평가 체크리스트와 테스트셋 구조를 만든다.
 4. 실제 경기 영상에서 detection miss, recovery rate, ID switch를 측정할 수 있는 평가 스크립트를 준비한다.
+
+최근 Track B 업데이트:
+- V4 Roboflow export를 player-only로 정규화해 YOLOv8n 30 epoch 재학습 완료.
+- 새 checkpoint test 성능: precision 0.619, recall 0.686, mAP50 0.672, mAP50-95 0.430.
+- 이전 checkpoint의 V4 test mAP50-95 0.316 대비 개선.
+- 새 실제 영상 리뷰 도구: `tools/run_player_model_on_video.py`.
+- 실제 영상 smoke test 결과는 `docs/CLAUDE_CODE_CONTINUATION_BRIEF_2026_06_08.md` 참고.
 
 ## 절대 섞지 말 것
 
