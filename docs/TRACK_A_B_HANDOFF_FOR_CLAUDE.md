@@ -18,6 +18,8 @@
   - Track B 기술적 배경, 파이프라인, 결과 요약
 - `docs/TRACK_B_COLLABORATION_REPORT_2026_06_09.md`
   - 협업자 공유용 요약 보고서
+- `docs/TRACK_A_PRESENTATION_SCOPE_BRIEF_2026_06_10.md`
+  - 발표 때 실제로 다룬 Track A 구현 범위만 정리한 Claude 전달용 브리프
 
 ## Track A: IoT 발표용 버전
 
