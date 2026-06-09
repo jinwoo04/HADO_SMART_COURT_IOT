@@ -167,6 +167,49 @@ class TestClassifyHadoAction:
         assert result is not None
         assert result.action == "crouch", f"우선순위 실패: {result.action}"
 
+    def test_shield_both_wrists_spread_and_raised(self):
+        """양손 넓게 벌리고 크게 위로 → shield 판정.
+
+        손목이 충분히 높이 올라가면 dy_norm > 0.5가 돼 shoot이 억제됨.
+        |dx| > 0.70이라 charge도 억제됨.
+        spread=0.5, factor=1.2 → shield=0.6 > 0.55 → shield 발화.
+        """
+        # ls=(20,60), rs=(80,60): shoulder_w=60, scale=60
+        # lw=(-30, 20): spread=|(-30-20)|/100=0.5; dy_norm=|(20-60)|/60=0.667>0.5 → NOT shoot
+        #   |dx|=|-30-20|/60=0.833>0.70 → NOT charge; lw[1]=20<le[1]=65 → lw_raised
+        # rw=(130, 20): same symmetry, both raised → factor=1.2, shield=0.6>0.55
+        kpts = _make_kpts({
+            _LS: (20.0, 60.0), _RS: (80.0, 60.0),
+            _LE: (10.0, 65.0), _RE: (90.0, 65.0),
+            _LW: (-30.0, 20.0), _RW: (130.0, 20.0),   # 양손 높이 + 넓게
+            _LH: (40.0, 130.0), _RH: (60.0, 130.0),
+        })
+        result = classify_hado_action(_det(kpts))
+        assert result is not None
+        assert result.action == "shield", f"expected shield, got {result.action} (scores={result.scores})"
+
+    def test_shield_not_triggered_when_wrists_down(self):
+        """팔 넓게 벌렸지만 손목이 팔꿈치 아래 → shield 미발화 (쉴드 계수 0.6으로 낮아짐)."""
+        # le=(10,55), lw=(-30,90): lw[1]=90 > le[1]=55 → lw_raised=False → factor=0.6
+        # spread=0.5 * 0.6=0.3 < 0.55 → shield 미발화
+        kpts = _make_kpts({
+            _LS: (20.0, 60.0), _RS: (80.0, 60.0),
+            _LE: (10.0, 55.0), _RE: (90.0, 55.0),
+            _LW: (-30.0, 90.0), _RW: (130.0, 90.0),   # 팔꿈치 아래 손목
+            _LH: (40.0, 130.0), _RH: (60.0, 130.0),
+        })
+        result = classify_hado_action(_det(kpts))
+        assert result is not None
+        assert result.action != "shield", f"shield should not fire: {result.action}"
+
+    def test_scores_dict_contains_all_actions(self):
+        """scores 딕셔너리에 모든 7동작이 포함돼야 함."""
+        kpts = _make_kpts({_LS: (40.0, 60.0), _RS: (60.0, 60.0)})
+        result = classify_hado_action(_det(kpts))
+        assert result is not None
+        assert set(result.scores.keys()) == {"crouch", "charge", "shoot", "shield",
+                                              "dodge_l", "dodge_r", "ready"}
+
 
 class TestSampleVestHue:
 
