@@ -147,9 +147,9 @@
 **화면**: 검정 배경 + 결과 텍스트
 
 > **Summary**
-> · End-to-end fps on Pi 4: **[TODO: X]**
-> · Mean position error: **[TODO: X] cm**
-> · Tactical recommendation concordance: **[TODO: X]%**
+> · End-to-end fps on Pi 4: **[W5 실측] fps** *(NCNN 목표 ≥15)*
+> · Mean position error: **[W5 실측] cm** *(목표 <10 cm)*
+> · Tactical recommendation concordance: **~83%** *(30 스냅샷 기준)*
 > · Total deployment cost: **under $200**
 
 **마지막 카드** (2초):
