@@ -1,0 +1,16 @@
+node_modules/
+package-lock.json
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Models (large binary files — share via scp or release)
+yolov8n-pose.pt
+yolov8n-pose_ncnn_model/
+*.onnx
+*.engine
+
+# OS
+.DS_Store
+Thumbs.db
