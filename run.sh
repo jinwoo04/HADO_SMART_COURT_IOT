@@ -69,6 +69,10 @@ case "$CMD" in
     measure-error|measure)
         python -m src.measure_error "${@:2}"
         ;;
+    w5_measure|w5)
+        # Pi4 W5 실측: NCNN/ONNX FPS + RAM + CPU온도 + TTS 지연 → data/w5_measurements.md
+        python -m src.measure_w5 "${@:2}"
+        ;;
     match)
         python -m src.main --match "${@:2}"
         ;;
@@ -95,7 +99,7 @@ case "$CMD" in
         python -m src.homography
         ;;
     *)
-        echo "사용법: ./run.sh [main|calibrate|bench|detect|test|demo|action|annotate|label]"
+        echo "사용법: ./run.sh [main|calibrate|bench|detect|test|demo|action|w5_measure|annotate|label]"
         exit 1
         ;;
 esac

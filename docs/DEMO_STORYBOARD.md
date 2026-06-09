@@ -106,7 +106,7 @@
 **자막**:
 > "Level 1 — YOLOv8n + IoU tracker → 1280×720 court overlay"
 > "Persistent IDs across occlusion"
-> "Running on Raspberry Pi 4 at [TODO: X] fps"
+> "Running on Raspberry Pi 4 at [W5 실측] fps  *(NCNN 목표 ≥15)*"
 
 **촬영 팁**:
 - HADO 헤드셋 착용 모습 보이면 가산점 (실제 사용 시나리오)

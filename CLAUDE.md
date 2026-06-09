@@ -53,6 +53,10 @@ python -m tests.test_homography    # just homography tests
 
 # Benchmark fps
 ./run.sh bench --frames 200 --imgsz 320
+
+# W5 실측 (Pi4 현장 — NCNN/ONNX/TTS 자동 측정)
+./run.sh w5_measure                    # 카메라 200프레임
+./run.sh w5_measure --video clip.mp4  # 비디오 파일
 ```
 
 ---
@@ -136,8 +140,12 @@ If a change pushes any metric past the hard floor, flag it before merging.
 - **W4** (6/4–10): Tactic engine (R1–R6) + voice + action_demo → DONE
   - R6 Lane Cover 추가, charge 동작 추가, threaded 캡처 버그 수정
   - 테스트 196개 통과, demo.mp4 90초 생성, 5분 백업 완료
-- **W5** (6/11–17): On-court testing + Pi4 실측 → UPCOMING
-  - 측정 항목: FPS(NCNN/ONNX), RAM, CPU 온도, 위치오차 RMS
+  - NCNN/ONNX auto-selection, demo_pose.py live camera, action_demo Pi4 단축키
+  - 발표 Q&A 22문항 완성, 참고문헌(GitHub+ArXiv) TECH_REPORT 추가
+- **W5** (6/11–17): On-court testing + Pi4 실측 → IN PROGRESS
+  - 측정 항목: FPS(NCNN/ONNX), RAM, CPU 온도, 위치오차 RMS, TTS 지연
+  - 실측 명령: `./run.sh w5_measure` → data/w5_measurements.md 자동 생성
+  - 결과를 QA_PREP.md Q5/Q6/Q9 및 TECH_REPORT §5 [TODO]에 기입
 - **W6** (6/18–22): Final report §5 실측 기입 + Q&A 영어 리허설 ×5
 
 ---
