@@ -151,6 +151,8 @@ Google Drive에서 10개 경기 영상을 받아 아래 경로에 저장했다.
   - `outputs/track_b_retrain_runs/track_b_current_best_checkpoint.txt`
 - 현재 leaderboard:
   - `outputs/track_b_retrain_runs/track_b_run_leaderboard.md`
+- 작업자 운영 문서:
+  - `docs/TRACK_B_OPERATOR_PLAYBOOK_2026_06_10.md`
 
 ## 5. 다음 작업자가 해야 할 일
 
