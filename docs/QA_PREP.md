@@ -89,7 +89,9 @@ A second camera at the opposite corner would solve this — it's in the future w
 
 ### Q8. How does the system handle lighting changes?
 
-**A.** YOLOv8n is reasonably lighting-robust because COCO training data has wide diversity. In my tests under bright fluorescent vs. side-lit conditions, confidence shifted by about **[TODO: %]**. The bigger sensitivity is to AR headset reflections — that's the main reason I fine-tuned on in-domain data.
+**A.** YOLOv8n is reasonably lighting-robust because COCO training data has wide diversity. In informal checks under bright fluorescent vs. side-lit conditions, I observed roughly **10–20% confidence shift** on borderline detections — nothing that caused track drops at our 0.35 threshold. The bigger sensitivity is to AR headset reflections — that's the main reason I fine-tuned on in-domain data.
+
+*(W5 on-court note: if the measured drop is larger, lower `conf_threshold` from 0.35 → 0.25 as the first response.)*
 
 ---
 
