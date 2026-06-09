@@ -135,7 +135,7 @@ If a change pushes any metric past the hard floor, flag it before merging.
 - **W3** (5/28–6/3): Bird-eye view + 중간발표 → DONE (발표 6/8)
 - **W4** (6/4–10): Tactic engine (R1–R6) + voice + action_demo → DONE
   - R6 Lane Cover 추가, charge 동작 추가, threaded 캡처 버그 수정
-  - 테스트 180개 통과, demo.mp4 90초 생성, 5분 백업 완료
+  - 테스트 196개 통과, demo.mp4 90초 생성, 5분 백업 완료
 - **W5** (6/11–17): On-court testing + Pi4 실측 → UPCOMING
   - 측정 항목: FPS(NCNN/ONNX), RAM, CPU 온도, 위치오차 RMS
 - **W6** (6/18–22): Final report §5 실측 기입 + Q&A 영어 리허설 ×5
@@ -158,9 +158,9 @@ If a change pushes any metric past the hard floor, flag it before merging.
 - [x] README.md
 - [x] Final report `.docx` (10+ pages) — [TODO] cells in §5 need real data
 - [x] Final PPT `.pptx` (16 slides) — [TODO] cells need real data
-- [ ] Demo video `.mp4` (90–120 s)
-- [ ] Backup demo video (5-minute uncut)
-- [ ] Q&A prep rehearsed in English
+- [x] Demo video `.mp4` (90 s) — data/demo.mp4 (재생성 완료)
+- [x] Backup demo video (5-minute uncut) — data/demo_5min.mp4
+- [ ] Q&A prep rehearsed in English — [TODO] 영어 리허설 ×5
 
 ---
 
