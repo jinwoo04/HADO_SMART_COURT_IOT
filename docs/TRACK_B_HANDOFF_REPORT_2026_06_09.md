@@ -76,6 +76,25 @@ Google Drive에서 10개 경기 영상을 받아 아래 경로에 저장했다.
 - `tools/mine_hard_player_samples.py`
   - 이제 `--device auto`와 Track B 기본 checkpoint 자동 탐색을 지원
 
+- `tools/compare_track_b_runs.py`
+  - `outputs/track_b_retrain_runs/*/run_summary.json`과 `results.csv`를 다시 읽어
+  - 버전별 precision / recall / mAP50 / mAP50-95를 leaderboard로 정리
+  - 현재 추천 checkpoint를 자동으로 뽑아
+    - `outputs/track_b_retrain_runs/track_b_current_best_checkpoint.txt`
+    - `outputs/track_b_retrain_runs/track_b_current_best_checkpoint.json`
+    - 형태로 저장
+
+- `tools/prepare_track_b_batch_review.py`
+  - batch video intake
+  - summary 생성
+  - Roboflow 업로드 bundle 생성
+  - 을 한 번에 묶어 실행
+
+- `tools/retrain_track_b_export.py`
+  - 새 export 재학습이 끝나면
+  - `tools/compare_track_b_runs.py`를 자동 호출해
+  - 최신 leaderboard와 추천 checkpoint pointer를 갱신
+
 ### 3.3 10경기 1차 분석 완료
 
 산출물:
@@ -128,6 +147,10 @@ Google Drive에서 10개 경기 영상을 받아 아래 경로에 저장했다.
   - `data/track_b_batch_review/roboflow_upload_bundle_batch01_priority.zip`
 - priority 업로드 manifest:
   - `data/track_b_batch_review/roboflow_upload_bundle_batch01_priority_manifest.csv`
+- 현재 추천 checkpoint pointer:
+  - `outputs/track_b_retrain_runs/track_b_current_best_checkpoint.txt`
+- 현재 leaderboard:
+  - `outputs/track_b_retrain_runs/track_b_run_leaderboard.md`
 
 ## 5. 다음 작업자가 해야 할 일
 
@@ -192,6 +215,15 @@ Google Drive에서 10개 경기 영상을 받아 아래 경로에 저장했다.
 - `tools/retrain_track_b_export.py --epochs 1`
   - 학습 분기까지 end-to-end 실행 확인
   - 이 결과는 배선 smoke test 용도이며 성능 비교 기준으로 사용하지 않는다.
+
+- `tools/compare_track_b_runs.py`
+  - V1 ~ V4 run summary + results.csv 비교 검증 완료
+  - 현재 추천 run은 `trackb_v4_player_only`
+  - `resolve_model_path(None)`가 이 pointer를 우선적으로 읽는 것까지 확인
+
+- `tools/prepare_track_b_batch_review.py --skip-process`
+  - 기존 batch02 결과를 다시 읽어
+  - summary / priority CSV / upload bundle / zip 재생성 검증 완료
 
 ## 9. 권장 커밋 기준
 

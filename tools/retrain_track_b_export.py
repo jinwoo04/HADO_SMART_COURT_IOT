@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 from convert_yolo_segments_to_boxes import convert_dataset
@@ -18,6 +20,7 @@ from track_b_runtime import PROJECT_ROOT, resolve_device, resolve_model_path
 
 DEFAULT_CLASS_MAP = "0:0,2:0,1:drop"
 DEFAULT_PLAYER_NAMES = ["player"]
+COMPARE_RUNS_SCRIPT = PROJECT_ROOT / "tools" / "compare_track_b_runs.py"
 
 
 def _parse_class_map(value: str | None) -> dict[int, int | None]:
@@ -172,6 +175,22 @@ def _write_markdown_summary(summary: dict, out_path: Path) -> None:
     out_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def _refresh_leaderboard(out_root: Path) -> None:
+    if not COMPARE_RUNS_SCRIPT.exists():
+        return
+    subprocess.run(
+        [
+            sys.executable,
+            str(COMPARE_RUNS_SCRIPT),
+            "--runs-root",
+            str(out_root),
+            "--out-dir",
+            str(out_root),
+        ],
+        check=True,
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Convert, retrain, evaluate, and mine Track B Roboflow exports")
     parser.add_argument("--export-src", required=True, help="Roboflow YOLO export root")
@@ -246,6 +265,7 @@ def main() -> int:
     }
     (run_root / "run_summary.json").write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
     _write_markdown_summary(summary, run_root / "run_summary.md")
+    _refresh_leaderboard(Path(args.out_root).expanduser().resolve())
     print(json.dumps(summary, indent=2, ensure_ascii=False))
     return 0
 

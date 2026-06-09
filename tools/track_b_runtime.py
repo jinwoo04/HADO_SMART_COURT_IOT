@@ -7,6 +7,24 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 MODEL_FILENAME = "hado_player_v4_player_only_yolov8n_mps_e30_best.pt"
+BEST_CHECKPOINT_POINTER = PROJECT_ROOT / "outputs" / "track_b_retrain_runs" / "track_b_current_best_checkpoint.txt"
+
+
+def _best_checkpoint_from_pointer() -> Path | None:
+    if not BEST_CHECKPOINT_POINTER.exists():
+        return None
+    value = BEST_CHECKPOINT_POINTER.read_text(encoding="utf-8").strip()
+    if not value:
+        return None
+    path = Path(value).expanduser()
+    return path if path.exists() else None
+
+
+def _scan_retrain_run_best_weights() -> list[Path]:
+    runs_root = PROJECT_ROOT / "outputs" / "track_b_retrain_runs"
+    if not runs_root.exists():
+        return []
+    return sorted(runs_root.glob("*/train/*/weights/best.pt"))
 
 
 def default_model_candidates() -> list[Path]:
@@ -15,6 +33,10 @@ def default_model_candidates() -> list[Path]:
     if env_path:
         candidates.append(Path(env_path).expanduser())
 
+    best_from_pointer = _best_checkpoint_from_pointer()
+    if best_from_pointer:
+        candidates.append(best_from_pointer)
+
     candidates.extend(
         [
             PROJECT_ROOT / "models" / MODEL_FILENAME,
@@ -22,6 +44,7 @@ def default_model_candidates() -> list[Path]:
             Path.home() / "Documents" / "Codex",
         ]
     )
+    candidates.extend(reversed(_scan_retrain_run_best_weights()))
     return candidates
 
 
