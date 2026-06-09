@@ -21,6 +21,7 @@ sys.path.insert(0, str(ROOT))
 from src.guide import (
     URGENCY_COLOR,
     VoiceGuide,
+    _RULE_KO,
     draw_guide_on_birdeye,
     draw_guide_text_on_frame,
 )
@@ -146,6 +147,36 @@ def test_guide_birdeye_multiple_advices():
     result = draw_guide_on_birdeye(court, advices)
     assert result.shape == court.shape
     print("  ✓ draw_guide_on_birdeye: 다중 advice 처리")
+
+
+# ── _RULE_KO 레이블 ────────────────────────────────────────────────────────────
+
+def test_rule_ko_covers_all_rules():
+    """R1~R6과 BASE가 모두 _RULE_KO에 있어야 한다."""
+    for rule in ("R1", "R2", "R3", "R4", "R5", "R6", "BASE"):
+        assert rule in _RULE_KO, f"{rule} missing from _RULE_KO"
+    print("  ✓ _RULE_KO: R1~R6 + BASE 모두 존재")
+
+
+def test_rule_ko_base_is_empty():
+    """BASE는 텍스트 없이 빈 문자열 — 패널에서 건너뛴다."""
+    assert _RULE_KO["BASE"] == ""
+    print("  ✓ _RULE_KO: BASE → 빈 문자열")
+
+
+def test_guide_birdeye_non_base_rule_draws_label():
+    """비BASE 규칙 advice는 BASE 규칙보다 더 많은 픽셀을 변경한다 (규칙 레이블 추가)."""
+    court = _court()
+    adv_base = _make_advice(cx=1.0, cy=1.0, tx=3.0, ty=1.0, rule="BASE")
+    adv_r4   = _make_advice(cx=1.0, cy=1.0, tx=3.0, ty=1.0, rule="R4")
+    result_base = draw_guide_on_birdeye(court, [adv_base])
+    result_r4   = draw_guide_on_birdeye(court, [adv_r4])
+    diff_base = int(np.sum(result_base != court))
+    diff_r4   = int(np.sum(result_r4   != court))
+    assert diff_r4 > diff_base, (
+        f"R4 레이블이 BASE보다 더 많이 그려져야 함: BASE={diff_base}, R4={diff_r4}"
+    )
+    print(f"  ✓ draw_guide_on_birdeye 규칙 레이블: BASE={diff_base}px, R4={diff_r4}px")
 
 
 # ── draw_guide_text_on_frame ──────────────────────────────────────────────────
@@ -345,6 +376,9 @@ def run_all():
     test_guide_birdeye_high_urgency_draws_more()
     test_guide_birdeye_does_not_mutate_input()
     test_guide_birdeye_multiple_advices()
+    test_rule_ko_covers_all_rules()
+    test_rule_ko_base_is_empty()
+    test_guide_birdeye_non_base_rule_draws_label()
     test_guide_text_preserves_shape()
     test_guide_text_empty_advices_no_change()
     test_guide_text_modifies_frame()
