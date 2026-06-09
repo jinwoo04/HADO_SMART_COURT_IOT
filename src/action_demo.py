@@ -288,7 +288,8 @@ def main() -> None:
     parser.add_argument("--height",     type=int,   default=480)
     parser.add_argument("--fps",        type=int,   default=30)
     parser.add_argument("--record",     default="",    help="출력 mp4 경로")
-    parser.add_argument("--max-frames", type=int,   default=0)
+    parser.add_argument("--frames", "--max-frames", type=int, default=0, dest="max_frames",
+                        help="최대 프레임 수 (0=무제한)")
     parser.add_argument("--headless",   action="store_true")
     parser.add_argument("--threaded",   action="store_true", help="스레드 캡처 (Pi4 FPS 향상)")
     parser.add_argument("--onnx",       action="store_true", help="NCNN 대신 ONNX 강제 사용")

@@ -39,10 +39,18 @@ pip install -r requirements.txt
 # 키: ESC 종료 / r CSV 녹화 시작/중지 / t 팀 초기화
 ```
 
-### Step 3 — 동작 인식 데모
+### Step 3 — 전체 파이프라인 라이브 데모 (스켈레톤 + 버드아이뷰)
 
 ```bash
-./run.sh action --threaded
+./run.sh demo_pose_live           # NCNN 자동, threaded, 라이브 카메라
+./run.sh pose_live --out data/field_pose.mp4   # 동시 녹화
+```
+
+### Step 4 — 동작 인식 데모
+
+```bash
+./run.sh action_live              # NCNN 자동, threaded 캡처 (= action --threaded)
+./run.sh action --threaded --record data/action_demo_field.mp4  # 녹화 포함
 # ESC로 종료 (Pi4 headless: Ctrl+C)
 ```
 

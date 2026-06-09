@@ -218,16 +218,46 @@ def _draw_posture_stats(
 
 # ---------- 메인 루프 ----------
 def run(args) -> int:
-    cap = cv2.VideoCapture(args.video)
-    if not cap.isOpened():
-        print(f"[PoseDemo] 영상 열기 실패: {args.video}")
-        return 1
+    # ── NCNN → ONNX → .pt 모델 자동 선택 (Pi4 최적화 우선) ──────
+    if args.model:
+        model_path = args.model
+    elif (PROJECT_ROOT / "yolov8n-pose_ncnn_model").exists() and not args.pt and not args.onnx:
+        model_path = str(PROJECT_ROOT / "yolov8n-pose_ncnn_model")
+        print(f"[PoseDemo] NCNN 모델 사용 (Pi4 최적화): {model_path}")
+    elif (PROJECT_ROOT / "yolov8n-pose.onnx").exists() and not args.pt:
+        model_path = str(PROJECT_ROOT / "yolov8n-pose.onnx")
+        print(f"[PoseDemo] ONNX 모델 사용: {model_path}")
+    else:
+        model_path = "yolov8n-pose.pt"
+        print(f"[PoseDemo] PyTorch 모델 사용: {model_path}")
 
-    frame_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    frame_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    src_fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
-    total   = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    print(f"[PoseDemo] {args.video}  ({frame_w}×{frame_h} @{src_fps:.0f}fps, {total}프레임)")
+    # ── 입력 소스: 비디오 파일 or 라이브 카메라 ─────────────────
+    use_camera = not args.video
+    cam = None
+    cap = None
+    if use_camera:
+        try:
+            cam_src = int(args.source)
+        except (ValueError, AttributeError):
+            cam_src = args.source
+        from src.camera import Camera
+        cam = Camera(source=cam_src, width=1280, height=720, fps=30,
+                     threaded=args.threaded)
+        cam.open()
+        frame_w, frame_h = 1280, 720
+        src_fps = 30.0
+        total = 0
+        print(f"[PoseDemo] 카메라 모드 (소스={cam_src}, threaded={args.threaded})")
+    else:
+        cap = cv2.VideoCapture(args.video)
+        if not cap.isOpened():
+            print(f"[PoseDemo] 영상 열기 실패: {args.video}")
+            return 1
+        frame_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        frame_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        src_fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+        total   = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        print(f"[PoseDemo] {args.video}  ({frame_w}×{frame_h} @{src_fps:.0f}fps, {total}프레임)")
 
     # 렌즈 왜곡 보정 맵 로드 (--intrinsic 지정 시)
     undistort_maps: tuple[np.ndarray, np.ndarray] | None = None
@@ -243,7 +273,7 @@ def run(args) -> int:
             print(f"           먼저: ./run.sh calibrate --intrinsic --cam-id {args.cam_id}")
 
     # 모델 / 캘리브레이션 / 엔진 초기화
-    detector = PersonDetector(model_path=args.model,
+    detector = PersonDetector(model_path=model_path,
                                imgsz=args.imgsz, conf_threshold=args.conf)
     tracker       = IoUTracker(iou_threshold=0.3, max_lost_frames=12)
     px_per_m      = 80
@@ -276,7 +306,12 @@ def run(args) -> int:
     fi = 0
 
     while True:
-        ret, frame = cap.read()
+        if args.frames and fi >= args.frames:
+            break
+        if use_camera:
+            ret, frame = cam.read()
+        else:
+            ret, frame = cap.read()
         if not ret:
             break
         fi += 1
@@ -455,10 +490,14 @@ def run(args) -> int:
                 break
 
         if fi % 60 == 0:
-            print(f"[PoseDemo] {fi}/{total}  FPS={fps_now:.1f}  "
+            total_label = f"/{total}" if total else ""
+            print(f"[PoseDemo] {fi}{total_label}  FPS={fps_now:.1f}  "
                   f"자세: {posture_counts}")
 
-    cap.release()
+    if cap:
+        cap.release()
+    if cam:
+        cam.close()
     if writer:
         writer.release()
     if not args.headless:
@@ -470,13 +509,18 @@ def run(args) -> int:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="HADO YOLOv8-pose 파이프라인 데모")
-    parser.add_argument("--video",    required=True,      help="입력 영상 경로")
-    parser.add_argument("--model",    default="yolov8n-pose.pt", help="YOLO 모델 경로")
-    parser.add_argument("--out",      default="",         help="출력 mp4 경로 (미지정 시 저장 안 함)")
-    parser.add_argument("--imgsz",    type=int,   default=320)
-    parser.add_argument("--conf",     type=float, default=0.35)
-    parser.add_argument("--aruco",     action="store_true",
-                        help="ArUco 마커 자동 캘리브레이션")
+    parser.add_argument("--video",     default="",    help="입력 영상 경로 (미지정 시 카메라)")
+    parser.add_argument("--source",    default="0",   help="라이브 카메라 인덱스 (--video 미지정 시)")
+    parser.add_argument("--model",     default="",    help="YOLO 모델 경로 (기본: NCNN→ONNX→.pt 자동)")
+    parser.add_argument("--pt",        action="store_true", help="ONNX 대신 .pt 강제 사용")
+    parser.add_argument("--onnx",      action="store_true", help="NCNN 대신 ONNX 강제 사용")
+    parser.add_argument("--out",       default="",    help="출력 mp4 경로 (미지정 시 저장 안 함)")
+    parser.add_argument("--frames", "--max-frames", type=int, default=0, dest="frames",
+                        help="최대 프레임 수 (0=무제한)")
+    parser.add_argument("--imgsz",     type=int,   default=320)
+    parser.add_argument("--conf",      type=float, default=0.35)
+    parser.add_argument("--threaded",  action="store_true", help="스레드 캡처 (Pi4 FPS 향상)")
+    parser.add_argument("--aruco",     action="store_true", help="ArUco 마커 자동 캘리브레이션")
     parser.add_argument("--intrinsic", action="store_true",
                         help="렌즈 왜곡 보정 적용 (config/cam{id}_intrinsics.json 필요)")
     parser.add_argument("--cam-id",    type=int, default=0,
