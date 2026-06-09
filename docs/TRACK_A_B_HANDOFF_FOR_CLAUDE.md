@@ -10,7 +10,14 @@
   - Track A 발표용 설명 흐름
   - Track B Roboflow V4 player-only 모델 결과
   - 실제 영상 smoke test 결과
+  - 10경기 batch intake 결과
   - Claude Code 다음 작업 지시 포함
+- `docs/TRACK_B_HANDOFF_REPORT_2026_06_09.md`
+  - Track B 진행 현황과 다음 작업자를 위한 handoff 보고서
+- `docs/TRACK_B_TECHNICAL_REPORT_2026_06_09.md`
+  - Track B 기술적 배경, 파이프라인, 결과 요약
+- `docs/TRACK_B_COLLABORATION_REPORT_2026_06_09.md`
+  - 협업자 공유용 요약 보고서
 
 ## Track A: IoT 발표용 버전
 
@@ -86,6 +93,8 @@ Codex가 앞으로 우선 진행할 작업:
 - 새 checkpoint test 성능: precision 0.619, recall 0.686, mAP50 0.672, mAP50-95 0.430.
 - 이전 checkpoint의 V4 test mAP50-95 0.316 대비 개선.
 - 새 실제 영상 리뷰 도구: `tools/run_player_model_on_video.py`.
+- 새 batch intake 도구: `tools/process_track_b_video_batch.py`.
+- Drive 기반 10경기(`data/drive_imports/batch01`) 1차 샘플링/하드프레임 추출 완료.
 - 실제 영상 smoke test 결과는 `docs/CLAUDE_CODE_CONTINUATION_BRIEF_2026_06_08.md` 참고.
 
 ## 절대 섞지 말 것
