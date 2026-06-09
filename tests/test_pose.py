@@ -7,7 +7,7 @@ import pytest
 from src.detector import Detection
 from src.pose import (
     ACTION_KO, ActionResult,
-    classify_hado_action, sample_vest_hue,
+    classify_hado_action, draw_skeleton, sample_vest_hue,
 )
 
 _W, _H = 100.0, 200.0   # 가상 바운딩 박스 (왼쪽 팀 → frame_center_x=320 기준 팀A)
@@ -266,3 +266,37 @@ class TestSampleVestHue:
         assert result != -1, "빨간 조끼에서 hue 추출 실패"
         # red hue is near 0 (wraps 0/180), check it's in red range
         assert result <= 15 or result >= 165, f"예상 red hue(0~15 or 165~179), got {result}"
+
+
+class TestDrawSkeleton:
+    """draw_skeleton() — 크래시 없이 렌더링되는지 스모크 테스트."""
+
+    def test_no_crash_with_valid_keypoints(self):
+        """신뢰도 있는 키포인트 → 크래시 없이 in-place 드로잉."""
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        kpts = _make_kpts({
+            _LS: (200.0, 150.0), _RS: (280.0, 150.0),
+            _LE: (180.0, 200.0), _RE: (300.0, 200.0),
+            _LW: (160.0, 240.0), _RW: (320.0, 240.0),
+            _LH: (210.0, 270.0), _RH: (270.0, 270.0),
+            _LK: (210.0, 340.0), _RK: (270.0, 340.0),
+        })
+        det = _det(kpts, x1=150, x2=330)
+        draw_skeleton(frame, det)   # 크래시 없어야 함
+
+    def test_no_crash_with_none_keypoints(self):
+        """keypoints=None → 즉시 반환, 크래시 없음."""
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        det = Detection(x1=0, y1=0, x2=100, y2=200, confidence=0.9, keypoints=None)
+        draw_skeleton(frame, det)   # 크래시 없어야 함
+
+    def test_pixels_change_with_valid_keypoints(self):
+        """유효한 키포인트가 있으면 프레임에 뭔가가 그려짐 (모두 0이 아님)."""
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        kpts = _make_kpts({
+            _LS: (200.0, 150.0), _RS: (280.0, 150.0),
+            _LH: (210.0, 270.0), _RH: (270.0, 270.0),
+        })
+        det = _det(kpts, x1=150, x2=330)
+        draw_skeleton(frame, det)
+        assert frame.max() > 0, "스켈레톤이 그려지지 않음"
