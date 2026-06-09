@@ -255,8 +255,11 @@ The crucial efficiency: both pipelines share *one model inference*. We pay for t
 
 ## 자가 점검 — 본 발표 전 자신에게 물어볼 것
 
-- [ ] Q23 [TODO] 자리에 실측 정확도 % 채워 넣었는가?
-- [ ] 모든 [TODO] 자리에 실측치 채워 넣었는가?
+- [x] Q23 정확도 → ~80% 기입 완료
+- [ ] **W5 필수**: Q5/Q6/Q9 [TODO] → `./run.sh w5_measure` 실행 후 채우기
+  - Q5: NCNN fps, ONNX fps, RAM
+  - Q6: 캘리브레이션 오차(mm), RMS 위치 오차(cm) — `./run.sh measure-error`
+  - Q9: CPU 온도 5분 실행값
 - [ ] 답변을 영어로 매끄럽게 말할 수 있는가? — 거울 보고 5회 리허설
 - [ ] 한 문장 안에 동사 두 번 안 쓰는가?
 - [ ] 가장 짧은 답이 15초 이내, 가장 긴 답이 45초 이내인가?
