@@ -121,8 +121,9 @@
 > On the right is the bird-eye view with real-time player positions.
 >
 > You can see the colored arrows — those are the tactical recommendations.
-> Green arrows are MID urgency, red arrows are HIGH urgency.
-> The text label shows which rule fired and why.
+> Yellow arrows are MID urgency (spacing, lane cover, gap attack).
+> Red arrows with pulsing rings are HIGH urgency (counter-threat, backline defense).
+> Each arrow is labeled with the rule ID, so you can see at a glance which rule fired.
 >
 > *(If showing action demo)*
 > And here is the action classifier — watch the action panel at the bottom as I move."
