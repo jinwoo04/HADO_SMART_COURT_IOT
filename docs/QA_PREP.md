@@ -223,6 +223,27 @@ For accuracy: informal testing on my own deliberate single-action poses showed c
 
 ---
 
+### Q24. You said the system tracks skeletons — how exactly does that work, and what does it add over just tracking bounding boxes?
+
+**A.** The system uses **YOLOv8n-pose**, which outputs both a bounding box *and* 17 COCO body keypoints in a single inference pass. This creates two parallel measurement pipelines:
+
+**Pipeline 1 — Position tracking (L1/L2):**
+Bounding box → foot point (bottom-center of box) → homography → (x_m, y_m) court coordinates.
+This is what the tactical engine uses to judge spacing, counter-attack, and lane cover.
+Only the foot point matters here because homography is defined for the ground plane.
+
+**Pipeline 2 — Action recognition (L3):**
+17 keypoints → `classify_hado_action()` → 7 action labels (charge, shoot, shield, dodge L/R, crouch, ready).
+Key design: all distance thresholds are divided by `scale = max(shoulder_width, torso_height × 0.6, 30 px)`.
+This makes "arm extended far" mean the same thing whether the player is 2 m or 5 m from the camera.
+
+**Why skeleton over bounding box alone?**
+Bounding boxes tell you *where* a player is. Skeletons also tell you *what they're doing*. For HADO, knowing a player is in a "charge" pose at 3 m from the backline is more actionable than knowing their x/y coordinates alone.
+
+The crucial efficiency: both pipelines share *one model inference*. We pay for the pose model once and get position + action for free.
+
+---
+
 ### Q22. What would you do differently if you started over?
 
 **A.** Three things.
