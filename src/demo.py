@@ -7,6 +7,7 @@ calibration.json, YOLOv8, 실제 카메라 없이도 동작.
     python -m src.demo                  # 창 표시 + data/demo.mp4 저장
     python -m src.demo --headless       # 창 없이 video만 저장
     python -m src.demo --frames 600     # 20초 미리보기
+    python -m src.demo --max-frames 600 # 위와 동일한 별칭
     ./run.sh demo
 """
 from __future__ import annotations
@@ -866,7 +867,7 @@ def run(args) -> int:
 def main():
     parser = argparse.ArgumentParser(description="HADO 버드아이뷰 데모 (카메라 불필요)")
     parser.add_argument("--headless", action="store_true", help="창 없이 실행")
-    parser.add_argument("--frames", type=int, default=600,
+    parser.add_argument("--frames", "--max-frames", type=int, default=600, dest="frames",
                         help="총 프레임 수 (600=20초 @30fps)")
     parser.add_argument("--csv", type=str, default=None,
                         help="패턴 CSV 경로 (기본: data/movement_data.csv)")

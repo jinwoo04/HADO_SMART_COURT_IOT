@@ -1,4 +1,4 @@
-# Track B Handoff Report — 2026-06-09
+# Track B Handoff Report — 2026-06-10
 
 이 문서는 HADO AR/effect occlusion 연구 Track B를 다른 작업자나 다음 세션의 Codex/Claude Code가 바로 이어받을 수 있도록 정리한 실무 인계서다.
 
@@ -20,12 +20,14 @@ Track A 발표용 데모, PPT, IoT 시연 안정화 작업과는 분리해서 �
 현재 Track B의 기준선 모델은 Roboflow V4 export를 player-only로 정규화해 다시 학습한 YOLOv8n 모델이다.
 
 - 체크포인트:
-  - `/Users/jinu/Documents/Codex/2026-06-08/codex-codex/outputs/track_b_roboflow_export_review/hado_player_v4_player_only_yolov8n_mps_e30_best.pt`
-- V4 player-only test 성능:
-  - Precision `0.619`
-  - Recall `0.686`
-  - mAP50 `0.672`
-  - mAP50-95 `0.430`
+  - `outputs/track_b_retrain_runs/track_b_current_best_checkpoint.txt`
+- 현재 leaderboard 기준 추천 run:
+  - `trackb_v4_player_only`
+- V4 player-only peak 성능:
+  - Precision `0.676`
+  - Recall `0.648`
+  - mAP50 `0.653`
+  - mAP50-95 `0.353`
 
 핵심 해석:
 
@@ -35,11 +37,12 @@ Track A 발표용 데모, PPT, IoT 시연 안정화 작업과는 분리해서 �
 
 ## 3. 이번에 완료한 작업
 
-### 3.1 실제 경기 10개 intake
+### 3.1 실제 경기 batch01 + batch02 intake
 
-Google Drive에서 10개 경기 영상을 받아 아래 경로에 저장했다.
+Google Drive에서 실제 경기 영상을 두 batch로 받아 아래 경로에 저장했다.
 
 - `data/drive_imports/batch01`
+- `data/drive_imports/batch02_raw`
 - 파일: `match01.mp4` ~ `match010.mp4`
 
 ### 3.2 배치 처리 파이프라인 추가
@@ -95,6 +98,11 @@ Google Drive에서 10개 경기 영상을 받아 아래 경로에 저장했다.
   - `tools/compare_track_b_runs.py`를 자동 호출해
   - 최신 leaderboard와 추천 checkpoint pointer를 갱신
 
+- `tools/export_track_b_pose_review.py`
+  - 실제 경기영상에서 skeleton / action / court position review artifact를 생성
+  - CSV / JSONL / optional overlay mp4를 내보냄
+  - Track B의 다음 단계인 skeleton-based verification 준비용
+
 ### 3.3 10경기 1차 분석 완료
 
 산출물:
@@ -131,6 +139,34 @@ Google Drive에서 10개 경기 영상을 받아 아래 경로에 저장했다.
 - `label_priority` + `review_or_skip` 포함
 - 1차 라벨링 후 추가 확장용
 
+### 3.5 batch02 실제 영상 평가 완료
+
+batch02는 새 경기 10개를 현재 V4 best checkpoint로 다시 훑은 결과다.
+
+핵심 산출물:
+
+- `data/track_b_batch_review/batch02_v4_eval/batch_manifest.csv`
+- `data/track_b_batch_review/batch02_v4_eval/batch02_summary.md`
+- `data/track_b_batch_review/batch02_v4_eval/batch02_priority.csv`
+- `data/track_b_batch_review/batch02_v4_eval/roboflow_upload_bundle_v2_playable_bias.zip`
+
+요약:
+
+- 총 10경기 처리
+- sampled frames `994`
+- hard frames `130`
+- 가장 우선순위가 높은 경기:
+  - `match08`
+  - `match02`
+  - `match03`
+  - `match04`
+  - `match09`
+
+해석:
+
+- batch02에서는 miss보다 over-detection이 더 주요 문제였다.
+- 즉, 다음 relabeling은 “못 잡은 선수”보다 “이펙트/실드 겹침으로 player box가 과하게 많이 뜨는 장면” 정리에 가깝다.
+
 ## 4. 지금 가장 중요한 파일
 
 바로 다음 작업에 필요한 파일만 추리면 아래와 같다.
@@ -155,30 +191,33 @@ Google Drive에서 10개 경기 영상을 받아 아래 경로에 저장했다.
   - `docs/TRACK_B_OPERATOR_PLAYBOOK_2026_06_10.md`
 - skeleton phase 브리프:
   - `docs/TRACK_B_SKELETON_PHASE_BRIEF_2026_06_10.md`
+- batch02 평가 문서:
+  - `docs/TRACK_B_BATCH02_EVAL_2026_06_09.md`
 
 ## 5. 다음 작업자가 해야 할 일
 
 우선순위는 아래 순서가 가장 좋다.
 
-1. `roboflow_upload_bundle_batch01_phase1.zip` 36장을 Roboflow에 업로드한다.
+1. `data/track_b_batch_review/batch02_v4_eval/roboflow_upload_bundle_v2_playable_bias.zip` 또는 `frames/`를 Roboflow에 업로드한다.
 2. 이번 라운드는 반드시 `player-only`로 유지한다.
 3. 라벨링 규칙:
    - 실제 플레이 장면은 player 박스를 보수적으로 정확히 수정
    - shield/projectile과 겹쳐도 보이는 선수 몸 기준으로 일관되게 박스 부여
    - intro, roster, scoreboard 장면은 positive 학습 예시로 억지 사용하지 않음
-4. Roboflow에서 `V5` 버전으로 export한다.
+4. Roboflow에서 다음 버전 export를 생성한다.
 5. export ZIP 또는 export 폴더를 다시 로컬에 전달한다.
 6. 그 다음 로컬에서 아래 명령으로 재학습 루프를 실행한다.
 
 ```bash
 ./hado_venv/bin/python tools/retrain_track_b_export.py \
   --export-src "<V5 export folder>" \
-  --run-name "v5_player_only" \
+  --run-name "trackb_v5_player_only" \
   --epochs 30 \
   --batch 16
 ```
 
-7. 생성된 `run_summary.json`, `run_summary.md`, `tag_eval/`, `hard_mining/`를 보고 V4 대비 성능 비교와 실제 영상 재평가를 진행한다.
+7. 생성된 `run_summary.json`, `run_summary.md`, `tag_eval/`, `hard_mining/`, `track_b_run_leaderboard.md`를 보고 V4 대비 성능 비교와 실제 영상 재평가를 진행한다.
+8. player-only detector가 충분히 안정되면 `docs/TRACK_B_SKELETON_PHASE_BRIEF_2026_06_10.md`에 따라 skeleton verification으로 넘어간다.
 
 시간이 적으면:
 
@@ -195,7 +234,7 @@ Google Drive에서 10개 경기 영상을 받아 아래 경로에 저장했다.
 - heavy occlusion 예시는 더 늘려야 한다.
 - effect class를 같이 학습하는 것은 아직 이르다.
 
-따라서 다음 라운드 목표는 “멀티클래스 확장”이 아니라 “player-only V5 안정화”다.
+따라서 다음 라운드 목표는 “멀티클래스 확장”이 아니라 “player-only V5/V6 안정화”다.
 
 ## 7. 실행 환경 메모
 
@@ -228,6 +267,11 @@ Google Drive에서 10개 경기 영상을 받아 아래 경로에 저장했다.
 - `tools/prepare_track_b_batch_review.py --skip-process`
   - 기존 batch02 결과를 다시 읽어
   - summary / priority CSV / upload bundle / zip 재생성 검증 완료
+
+- `tools/export_track_b_pose_review.py`
+  - effect-heavy 실제 경기영상 smoke 실행 완료
+  - 일반 샘플 영상 `data/1.mp4`에서는 CSV / JSONL row 생성 검증 완료
+  - skeleton phase용 review artifact 형식이 실제로 작동하는 것 확인
 
 ## 9. 권장 커밋 기준
 

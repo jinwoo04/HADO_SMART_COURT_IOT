@@ -1,4 +1,4 @@
-# Track B Technical Report — 2026-06-09
+# Track B Technical Report — 2026-06-10
 
 ## 1. 연구 목적
 
@@ -31,12 +31,12 @@ Track B의 목적은 HADO 경기 영상에서 AR 이펙트가 선수와 겹치�
 
 ### 2.2 V4 player-only baseline
 
-정규화 후 YOLOv8n 기준 성능:
+정규화 후 현재 leaderboard 기준 peak 성능:
 
-- Precision `0.619`
-- Recall `0.686`
-- mAP50 `0.672`
-- mAP50-95 `0.430`
+- Precision `0.676`
+- Recall `0.648`
+- mAP50 `0.653`
+- mAP50-95 `0.353`
 
 이 값은 Track B의 현재 baseline이다.
 
@@ -101,6 +101,62 @@ Track B의 목적은 HADO 경기 영상에서 AR 이펙트가 선수와 겹치�
 - YOLOv8 재학습 수행
 - `clean/partial/heavy` 태그별 평가 수행
 - hard player sample을 다시 추출해 다음 relabeling으로 연결
+
+### 3.5 run leaderboard + best checkpoint selection
+
+스크립트:
+
+- `tools/compare_track_b_runs.py`
+
+역할:
+
+- `outputs/track_b_retrain_runs/*/run_summary.json`
+- `results.csv`
+
+를 다시 읽어서 버전별 leaderboard를 만든다.
+
+주요 산출물:
+
+- `outputs/track_b_retrain_runs/track_b_run_leaderboard.md`
+- `outputs/track_b_retrain_runs/track_b_run_leaderboard.csv`
+- `outputs/track_b_retrain_runs/track_b_current_best_checkpoint.txt`
+
+의미:
+
+- 다음 batch review나 hard mining에서 기본 checkpoint를 사람이 직접 고르지 않아도 됨
+- 현재 기준 추천 run을 자동으로 유지할 수 있음
+
+### 3.6 one-command batch review orchestration
+
+스크립트:
+
+- `tools/prepare_track_b_batch_review.py`
+
+역할:
+
+- batch video intake
+- hard frame mining
+- summary 생성
+- priority CSV 생성
+- Roboflow upload bundle 생성
+
+을 한 번의 명령으로 묶는다.
+
+### 3.7 skeleton verification preparation
+
+스크립트:
+
+- `tools/export_track_b_pose_review.py`
+
+역할:
+
+- 실제 경기영상에서 skeleton / action / court position review artifact를 생성
+- CSV / JSONL / optional overlay mp4를 저장
+
+이 단계의 목적:
+
+- Track B가 `player-only detector 안정화` 다음에
+- 실제 선수 위치와 action을 skeleton 기반으로 어느 정도 확인할 수 있는지 검증
 
 ## 4. 10경기 batch01 결과
 
@@ -210,11 +266,12 @@ contact sheet 검토 결과 반복적으로 확인된 실패 패턴은 아래와
 
 권장 다음 단계:
 
-1. phase1 36장 relabeling
+1. batch02 playable-bias 40장 relabeling
 2. Roboflow V5 export
 3. `tools/retrain_track_b_export.py`로 V5 player-only retrain
-4. V4 대비 정량 비교
+4. leaderboard에서 V4 대비 정량 비교
 5. 실제 경기영상 재평가
+6. detector가 어느 정도 안정되면 skeleton verification smoke 진행
 
 참고:
 
@@ -227,8 +284,10 @@ contact sheet 검토 결과 반복적으로 확인된 실패 패턴은 아래와
 - Recall
 - mAP50
 - mAP50-95
+- leaderboard score
 - 실제 영상 average nonzero confidence 변화
 - low-count frame 감소 여부
+- over-detection 장면 감소 여부
 
 ## 9. 결론
 

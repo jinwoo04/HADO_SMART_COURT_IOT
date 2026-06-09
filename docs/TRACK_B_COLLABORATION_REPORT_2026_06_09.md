@@ -1,4 +1,4 @@
-# Track B Collaboration Report — 2026-06-09
+# Track B Collaboration Report — 2026-06-10
 
 ## 1. 이 문서의 목적
 
@@ -24,15 +24,19 @@ Track B는 HADO 경기영상에서 가상 이펙트가 선수와 겹칠 때도 �
 - Roboflow V4 export를 player-only로 정규화
 - YOLOv8n baseline 재학습
 - 실제 경기영상 10개 intake 완료
+- 추가 실제 경기영상 batch02 평가 완료
 - hard frame 자동 추출 파이프라인 구축
 - relabeling 우선순위 선정 완료
 - Roboflow 업로드용 ZIP 생성 완료
+- run leaderboard + best checkpoint 자동 선택 추가
+- skeleton verification 준비용 export 도구 추가
 
 ### 현재 baseline
 
-- Precision `0.619`
-- Recall `0.686`
-- mAP50-95 `0.430`
+- 추천 run: `trackb_v4_player_only`
+- Precision `0.676`
+- Recall `0.648`
+- mAP50-95 `0.353`
 
 ## 4. 왜 추가 작업이 필요한가
 
@@ -49,8 +53,8 @@ Roboflow 내부 test set에서는 성능이 좋아졌지만, 실제 경기영상
 
 가장 중요한 다음 액션은 하나다.
 
-- `data/track_b_batch_review/roboflow_upload_bundle_batch01_phase1.zip`
-  - 36장
+- `data/track_b_batch_review/batch02_v4_eval/roboflow_upload_bundle_v2_playable_bias.zip`
+  - 40장
   - player-only relabeling 진행
 
 그 다음:
@@ -72,11 +76,15 @@ Roboflow 내부 test set에서는 성능이 좋아졌지만, 실제 경기영상
   - `docs/TRACK_B_HANDOFF_REPORT_2026_06_09.md`
 - 기술 상세:
   - `docs/TRACK_B_TECHNICAL_REPORT_2026_06_09.md`
+- 운영 문서:
+  - `docs/TRACK_B_OPERATOR_PLAYBOOK_2026_06_10.md`
 - 업로드용 ZIP:
-  - `data/track_b_batch_review/roboflow_upload_bundle_batch01_phase1.zip`
+  - `data/track_b_batch_review/batch02_v4_eval/roboflow_upload_bundle_v2_playable_bias.zip`
 - 업로드 설명 CSV:
-  - `data/track_b_batch_review/roboflow_upload_bundle_batch01_phase1_manifest.csv`
+  - `data/track_b_batch_review/batch02_v4_eval/roboflow_upload_bundle_v2_playable_bias/upload_manifest.csv`
+- 현재 추천 checkpoint:
+  - `outputs/track_b_retrain_runs/track_b_current_best_checkpoint.txt`
 
 ## 8. 현재 상태 한 줄 요약
 
-Track B는 지금 “실제 경기 실패 장면을 다시 학습 루프로 연결할 수 있는 상태”까지 왔고, 다음 단계는 phase1 36장 relabeling 후 V5 재학습이다.
+Track B는 지금 “실제 경기 실패 장면을 다시 학습 루프로 연결할 수 있는 상태”를 넘어서, “다음 버전이 끝나면 자동으로 leaderboard와 skeleton verification 준비까지 이어갈 수 있는 상태”까지 왔다.

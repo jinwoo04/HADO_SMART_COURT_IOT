@@ -1,6 +1,6 @@
 # Track A / Track B Handoff for Claude Code
 
-작성일: 2026-06-08
+작성일: 2026-06-10
 
 이 프로젝트는 현재 두 가지 목적의 작업이 같은 로컬 저장소에서 진행되고 있다. 앞으로 커밋, 브랜치, PR, 자동화 작업을 만들 때 반드시 아래 두 트랙을 구분한다.
 
@@ -32,14 +32,23 @@
 - 발표 안정성, 데모 영상, 히트맵, 전술 시각화, 테스트 통과가 우선이다.
 - AR/가상 이펙트 occlusion 대응 로직을 발표용 커밋에 섞지 않는다.
 
-현재 Track A로 분류되는 미커밋 파일:
+현재 Track A로 분류되는 주요 작업 파일:
 - `src/demo.py`
-  - 팀A 3명 중심 발표용 단순화.
+  - 팀A 3명 중심 발표용 시연 화면.
   - 선수별 이동 방향, 의도 표시, 팀A 반쪽 코트 확대 표시.
-  - 상태바/페이즈 라벨 등 발표 시각화 개선.
+  - `--frames`, `--max-frames` 둘 다 지원.
 - `src/guide.py`
-  - 코트 위 전술 화살표를 줄이고 텍스트 패널 중심으로 정리.
-  - 선수 이동방향/의도 뱃지를 그리는 `draw_player_overlays()` 추가.
+  - bird-eye 위 전술 화살표 + urgency 링 + 텍스트 패널 정리.
+  - 발표 중 설명하기 쉬운 형태로 시각화 단순화.
+- `src/demo_pose.py`
+  - 카메라/비디오 입력을 모두 지원.
+  - NCNN -> ONNX -> PyTorch 자동 모델 선택.
+  - `--frames`, `--max-frames`, `--threaded`, `--headless` 지원.
+  - bird-eye + skeleton + posture HUD 통합 데모.
+- `src/action_demo.py`
+  - NCNN -> ONNX -> PyTorch 자동 모델 선택.
+  - `--frames`, `--max-frames`, `--threaded`, `--headless`, `--record` 지원.
+  - 7-action skeleton 기반 발표용 동작 인식 데모.
 
 권장 브랜치:
 - `presentation/demo-finalization`
@@ -49,10 +58,26 @@
 - `fix: improve presentation demo readability`
 
 Claude Code가 우선 진행할 작업:
-1. `src/demo.py`, `src/guide.py` 변경사항을 발표 목적에 맞게 검토한다.
-2. `~/hado_venv/bin/python3 -m src.demo --headless --frames 2700` 또는 짧은 프레임으로 먼저 실행해 렌더링 문제가 없는지 확인한다.
-3. `./run.sh test` 또는 관련 pytest를 실행한다.
+1. `src/demo.py`, `src/guide.py`, `src/demo_pose.py`, `src/action_demo.py`를 발표 목적에 맞게 검토한다.
+2. 아래 짧은 스모크 테스트부터 다시 돌려 정상 종료를 확인한다.
+3. 그 다음 Pi4 / 현장 카메라 기준으로 HUD 가독성과 FPS를 다듬는다.
 4. 발표용 커밋에는 Track B 파일을 포함하지 않는다.
+
+검증된 스모크 테스트:
+
+```bash
+./hado_venv/bin/python -m src.demo --headless --max-frames 30
+./hado_venv/bin/python -m src.demo_pose --video data/1.mp4 --headless --frames 5
+./hado_venv/bin/python -m src.demo_pose --video data/1.mp4 --headless --max-frames 5
+./hado_venv/bin/python -m src.action_demo --source data/1.mp4 --headless --frames 5
+```
+
+확인된 결과:
+
+- `demo_pose`는 정확히 5프레임 처리 후 정상 종료됨
+- `action_demo`는 headless 5프레임 정상 종료됨
+- `demo.py`는 `--max-frames` 별칭으로 headless 30프레임 정상 종료됨
+- NCNN runtime이 로컬에서 로드되어 발표용 기본 경로가 동작함
 
 ## Track B: 개인 장기 프로젝트 버전
 
