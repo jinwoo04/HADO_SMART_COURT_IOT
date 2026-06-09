@@ -200,4 +200,25 @@ python -m src.action_demo --threaded
 
 ---
 
+---
+
+## 8. 참고 자료
+
+### 관련 오픈소스 구현체
+
+| 이름 | 관련성 | URL |
+|------|--------|-----|
+| YoloV8-ncnn-Raspberry-Pi-4 (Qengineering) | Pi4 NCNN 배포 벤치마크 — 본 시스템 FPS 추정 근거 | https://github.com/Qengineering/YoloV8-ncnn-Raspberry-Pi-4 |
+| Football-Analysis-using-CV-YOLOv8 | YOLOv8 + 호모그래피 버드아이뷰 → 본 시스템 좌표 변환과 동일 접근 | https://github.com/Rijo-1/Football-Analysis-using-Computer-Vision-with-Yolov8-OpenCV |
+| Football-Players-Tracking (Darkmyter) | YOLOv8 + ByteTrack 멀티 선수 추적 — 향후 IoU→ByteTrack 업그레이드 참조 | https://github.com/Darkmyter/Football-Players-Tracking |
+| ehpi_action_recognition | 스켈레톤 기반 경량 동작 인식, 20–60 FPS @ 엣지 기기 — 본 7동작 분류기 설계 참조 | https://github.com/noboevbo/ehpi_action_recognition |
+| Ultralytics NCNN Export | 공식 YOLOv8 → NCNN FP16 변환 파이프라인 문서 | https://docs.ultralytics.com/integrations/ncnn |
+
+### 관련 논문
+
+| 논문 | 관련성 |
+|------|--------|
+| "AI-Driven Soccer Analysis" (ArXiv 2025) | 단일 카메라 3D 선수 재구성 + 대형 감지 — 호모그래피 접근 타당성 검증 |
+| "Soccer Vision Challenges" (ArXiv 2020) | 폐색·카메라 캘리브레이션 문제 체계화 — 본 시스템 IoU tracker 한계와 연계 |
+
 *이 문서는 CLAUDE.md 기준 자동 생성되었습니다.*

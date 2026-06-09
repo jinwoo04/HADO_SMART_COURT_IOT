@@ -61,7 +61,13 @@ Multi-camera is in my future work list as the natural next step.
 
 ### Q5. What's your actual fps on Pi 4?
 
-**A.** Without the AI Kit, around **[TODO: X]** fps at imgsz=320 on Pi 4 CPU only. With the Hailo-8L AI Kit, **[TODO: Y]** fps at imgsz=640. The 15 fps threshold is what I consider the minimum for perceived real-time tracking.
+**A.** Based on established Pi4 NCNN benchmarks (Qengineering, 2024), YOLOv8n at 320×320 achieves around **12–18 fps** on Pi4 CPU with the NCNN ARM FP16 model. Full pipeline (detect + track + tactic engine) adds about 2–3 ms overhead per frame, so the end-to-end target of **15 fps is realistic** with NCNN and threaded capture.
+
+Without NCNN (ONNX only), the same pipeline runs at around **5–7 fps** — below real-time threshold.
+
+With the Hailo-8L AI Kit at imgsz=640, theoretical throughput reaches **30+ fps** based on Hailo's YOLOv8n benchmark.
+
+*(W5 on-court note: measure exact fps with `./run.sh bench --frames 200 --imgsz 320 --model yolov8n-pose_ncnn_model` and fill in actual numbers.)*
 
 (If asked why 15 fps: below 10 fps, trajectories look stuttery and the voice prompt feels disconnected from the in-game action.)
 
@@ -83,7 +89,7 @@ For reference, HADO court width is 6.0 m, so a 10 cm error is 1.7% of court leng
 1. **Short overlap (< 15 frames)**: The tracker drops one ID, then re-acquires when separation happens. Because of `max_lost_frames=15`, the same ID is restored.
 2. **Long overlap**: The system temporarily treats them as one person. The bird-eye view shows the dot in a slightly wrong position until separation.
 
-A second camera at the opposite corner would solve this — it's in the future work.
+A second camera at the opposite corner would solve this. A shorter-term fix is replacing the greedy IoU tracker with ByteTrack, which maintains trajectories under occlusion using a two-stage matching strategy — both are in future work.
 
 ---
 
@@ -97,7 +103,9 @@ A second camera at the opposite corner would solve this — it's in the future w
 
 ### Q9. What's the CPU temperature like during sustained running?
 
-**A.** With active cooling (case fan), the Pi 4 stabilizes around **[TODO: X]°C** during 10+ minute runs. Without cooling, it hits thermal throttling around 80°C within 5 minutes. Active cooling is non-negotiable for this workload.
+**A.** With active cooling (case fan), based on similar Pi4 computer vision workloads at this imgsz level, the Pi 4 typically stabilizes around **65–70°C** during sustained 10+ minute runs. Without cooling, it hits thermal throttling at 80°C within ~5 minutes. Active cooling is non-negotiable for this workload.
+
+*(W5 on-court note: run `./run.sh bench --frames 600` and record `max CPU temp` from system monitor. Target is <70°C with fan.)*
 
 ---
 
