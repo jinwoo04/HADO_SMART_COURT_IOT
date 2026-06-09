@@ -100,7 +100,7 @@
 
 ## Slide 8 — Validation
 
-> "For validation, I wrote 196 unit tests covering all core modules.
+> "For validation, I wrote 209 unit tests covering all core modules.
 >
 > Each tactical rule has dedicated test cases, including edge cases such as:
 > exactly two opponents where they split 50-50 across lanes — which should *not* trigger R6.
@@ -169,4 +169,4 @@
 ---
 
 *이 대본은 템플릿입니다. 발표 당일 자신의 말투로 바꿔도 됩니다.*
-*핵심은 숫자(15 fps, 10 cm, 196 tests, 635 patterns)와 이유(why rules not ML).*
+*핵심은 숫자(15 fps, 10 cm, 209 tests, 635 patterns)와 이유(why rules not ML).*
