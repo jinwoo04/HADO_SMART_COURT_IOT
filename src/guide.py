@@ -30,6 +30,7 @@ _RULE_KO = {
     "R3": "측면 회피",
     "R4": "갭 공격",
     "R5": "수비 후퇴",
+    "R6": "레인 커버",
     "BASE": "",
 }
 
@@ -50,16 +51,27 @@ def draw_guide_on_birdeye(
     advices: List[TacticAdvice],
     px_per_m: int = 100,
 ) -> np.ndarray:
-    """전술 분석 결과를 텍스트 패널로만 표시 (코트 위 화살표 없음).
+    """전술 분석 결과를 텍스트 패널 + HIGH urgency 경고 링으로 표시.
 
-    - 코트 위는 선수 이동방향/의도만 표현 (draw_player_overlays 담당)
-    - 전술 규칙 발동 내용은 우하단 텍스트 패널로 분리해 가독성 확보
+    - 코트 위 이동방향/의도는 draw_player_overlays 담당
+    - HIGH urgency는 해당 선수 위치에 빨간 경고 링을 추가 렌더링
+    - 전술 규칙 내용은 우하단 텍스트 패널
     """
     out = court_img.copy()
 
     active = [a for a in advices if a.distance_m >= 0.15]
     if active:
         _draw_tactic_panel(out, active)
+        # HIGH urgency: 선수 위치에 경고 링 표시
+        h_img, w_img = out.shape[:2]
+        for a in active:
+            if a.urgency == "HIGH":
+                px = int(a.current_pos[0] * px_per_m)
+                py = int(a.current_pos[1] * px_per_m)
+                if 0 <= px < w_img and 0 <= py < h_img:
+                    color = URGENCY_COLOR["HIGH"]
+                    cv2.circle(out, (px, py), 22, color, 2, cv2.LINE_AA)
+                    cv2.circle(out, (px, py), 16, color, 1, cv2.LINE_AA)
     return out
 
 
@@ -95,10 +107,14 @@ def _draw_tactic_panel(img: np.ndarray, advices: List[TacticAdvice]) -> None:
         if not rule_text:
             continue
         iy = y0 + pad + 14 + i * line_h
-        # ● 색점
-        cv2.circle(img, (x0 + pad + 4, iy + 3), 4, color, -1, cv2.LINE_AA)
-        # 팀 + 규칙
+        # ● 색점 (HIGH = 더 큰 원)
+        r = 5 if a.urgency == "HIGH" else 3
+        cv2.circle(img, (x0 + pad + 4, iy + 3), r, color, -1, cv2.LINE_AA)
+        # 팀 + 규칙 + 이동거리
+        dist_txt = f"{a.distance_m:.1f}m" if a.distance_m < 9.9 else ""
         txt = f"{'A' if a.team == 'A' else 'B'}팀 #{a.track_id}  {rule_text}"
+        if dist_txt:
+            txt += f"  {dist_txt}"
         _put_kr(img, txt, (x0 + pad + 14, iy - 1), 11, color)
 
 

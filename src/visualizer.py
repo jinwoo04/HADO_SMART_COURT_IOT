@@ -59,6 +59,20 @@ def render_court_birdeye(
         y_px = int(y_m * px_per_m)
         cv2.line(img, (0, y_px), (w, y_px), (60, 70, 55), 1, cv2.LINE_AA)
 
+    # HADO 전술 구역선 (x축): 팀A 3선(1.5m)/2선(3.0m), 팀B 미러(7.0m/8.5m)
+    zone_x_color = (70, 160, 70)
+    for x_zone in [1.5, 3.0, 7.0, 8.5]:
+        xp = int(x_zone * px_per_m)
+        if 0 < xp < w:
+            cv2.line(img, (xp, 0), (xp, h), zone_x_color, 1, cv2.LINE_AA)
+
+    # HADO 레인 경계선 (y축): 3개 레인 분리 (2.0m / 4.0m)
+    lane_y_color = (55, 130, 55)
+    for y_lane in [2.0, 4.0]:
+        yp = int(y_lane * px_per_m)
+        if 0 < yp < h:
+            cv2.line(img, (0, yp), (w, yp), lane_y_color, 1, cv2.LINE_AA)
+
     # 모서리 좌표 라벨
     cv2.putText(img, "(0,0)", (8, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.45, line_color, 1)
     cv2.putText(img, f"({calib.court_width_m:.1f},{calib.court_height_m:.2f})",

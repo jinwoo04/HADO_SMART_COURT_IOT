@@ -91,6 +91,8 @@ _PLAYER_ROLES = {
     1: "technician",    2: "defender",      3: "main_attacker",
     4: "main_attacker", 5: "defender",      6: "technician",
 }
+# 팀 배정 (1-3: 팀A, 4-6: 팀B)
+_PLAYER_TEAMS = {1: "A", 2: "A", 3: "A", 4: "B", 5: "B", 6: "B"}
 
 
 # ---------- 패턴 라이브러리 로드 ----------
@@ -294,20 +296,29 @@ class PatternPlayer:
 
 # ---------- 버드아이뷰 상태 바 ----------
 def _draw_status_bar(img: np.ndarray, sim: dict[int, PatternPlayer]) -> None:
-    """하단 바: 선수별 역할 + 현재 의도 표시."""
+    """하단 2줄 바: 팀A/B 선수별 역할 + 현재 의도 표시."""
     from src.annotate import put_text_kr
 
     h, w = img.shape[:2]
-    cv2.rectangle(img, (0, h - 22), (w, h), (12, 12, 12), -1)
+    cv2.rectangle(img, (0, h - 38), (w, h), (12, 12, 12), -1)
 
-    parts = []
+    # 팀A (pid 1-3)
+    parts_a = []
     for pid in sorted(p for p in sim if p <= 3):
         p = sim[pid]
         role_ko   = _ROLE_KO.get(p.role or _PLAYER_ROLES.get(pid, ""), "?")
         intent_ko = _INTENT_KO.get(p.intent, "")
-        parts.append(f"#{pid} {role_ko}" + (f" [{intent_ko}]" if intent_ko else ""))
+        parts_a.append(f"#{pid}{role_ko[:2]}" + (f"[{intent_ko[:4]}]" if intent_ko else ""))
+    put_text_kr(img, "A:  " + "  ".join(parts_a), (8, h - 34), 11, (100, 255, 150))
 
-    put_text_kr(img, "  ·  ".join(parts), (8, h - 19), 12, (140, 255, 180))
+    # 팀B (pid 4-6)
+    parts_b = []
+    for pid in sorted(p for p in sim if p >= 4):
+        p = sim[pid]
+        role_ko   = _ROLE_KO.get(p.role or _PLAYER_ROLES.get(pid, ""), "?")
+        intent_ko = _INTENT_KO.get(p.intent, "")
+        parts_b.append(f"#{pid}{role_ko[:2]}" + (f"[{intent_ko[:4]}]" if intent_ko else ""))
+    put_text_kr(img, "B:  " + "  ".join(parts_b), (8, h - 20), 11, (100, 150, 255))
 
 
 def _draw_zone_hud(img: np.ndarray, pos: dict[int, tuple[float, float]]) -> None:
@@ -355,6 +366,55 @@ def _draw_zone_hud(img: np.ndarray, pos: dict[int, tuple[float, float]]) -> None
             cv2.circle(img, (cx, iy - 3), 3, clr, -1, cv2.LINE_AA)
 
 
+# ---------- 규칙 발동 카운터 HUD ----------
+def _draw_rule_counter(img: np.ndarray, counts: dict[str, int], frame: int) -> None:
+    """좌하단 규칙 발동 누적 카운터 (R1-R6 × 2열 그리드).
+
+    frame이 작을 때는 표시 안 함(워밍업 구간).
+    """
+    if frame < 50:
+        return
+    h, w = img.shape[:2]
+    rules = [("R1", "분산"), ("R2", "커버"),
+             ("R3", "회피"), ("R4", "갭공격"),
+             ("R5", "후퇴"), ("R6", "레인")]
+    colors = {
+        "R1": (0, 220, 255), "R2": (0, 200, 160),
+        "R3": (0, 80,  255), "R4": (0, 200, 255),
+        "R5": (0, 60,  200), "R6": (120, 255, 80),
+    }
+
+    cols, rows = 3, 2
+    cell_w, cell_h = 60, 20
+    pad = 5
+    panel_w = cols * cell_w + 2 * pad
+    panel_h = rows * cell_h + 2 * pad + 12  # +12 for title
+    x0 = pad
+    y0 = h - panel_h - 44  # status bar 위
+
+    overlay = img.copy()
+    cv2.rectangle(overlay, (x0, y0), (x0 + panel_w, y0 + panel_h), (10, 10, 10), -1)
+    cv2.addWeighted(overlay, 0.70, img, 0.30, 0, img)
+    cv2.rectangle(img, (x0, y0), (x0 + panel_w, y0 + panel_h), (60, 60, 60), 1)
+    cv2.putText(img, "Rules", (x0 + pad, y0 + 10),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.33, (160, 160, 160), 1)
+
+    for i, (rule, short) in enumerate(rules):
+        col, row = i % cols, i // cols
+        cx = x0 + pad + col * cell_w
+        cy = y0 + 14 + row * cell_h
+        cnt = counts.get(rule, 0)
+        clr = colors.get(rule, (180, 180, 180))
+        # 발동된 규칙은 밝게
+        if cnt > 0:
+            cv2.rectangle(img, (cx, cy), (cx + cell_w - 2, cy + cell_h - 2),
+                          tuple(max(0, c // 4) for c in clr), -1)
+        label = f"{rule}:{cnt // max(1, frame // 30):02d}/s" if cnt > 0 else f"{rule}:--"
+        cv2.putText(img, label, (cx + 2, cy + 13),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.30,
+                    clr if cnt > 0 else (80, 80, 80), 1, cv2.LINE_AA)
+
+
 # ---------- 카메라 배경 / bbox ----------
 def _make_calib():
     """1280×720 가상 카메라: 코트를 위에서 비스듬히 내려다보는 원근감."""
@@ -372,21 +432,58 @@ def _make_calib():
 
 
 def _build_camera_bg(calib) -> np.ndarray:
-    bg = np.full((_FRAME_H, _FRAME_W, 3), (30, 30, 30), dtype=np.uint8)
+    bg = np.full((_FRAME_H, _FRAME_W, 3), (25, 25, 25), dtype=np.uint8)
     pts = calib.corners_pixel.astype(np.int32).reshape(-1, 1, 2)
-    cv2.fillPoly(bg, [pts], (45, 55, 40))
-    cv2.polylines(bg, [pts], True, (200, 200, 200), 2)
+
+    # 팀A 진영(x=0-5) 녹색, 팀B 진영(x=5-10) 파랑 — 반투명 팀 구역 표시
     mid_top = court_to_pixel(np.array([[5.0, 0.0]]), calib)[0].astype(int)
     mid_bot = court_to_pixel(np.array([[5.0, _COURT_H]]), calib)[0].astype(int)
-    cv2.line(bg, tuple(mid_top), tuple(mid_bot), (150, 150, 60), 1, cv2.LINE_AA)
+    left_pts  = np.array([calib.corners_pixel[0], mid_top,
+                          mid_bot, calib.corners_pixel[3]], dtype=np.int32)
+    right_pts = np.array([mid_top, calib.corners_pixel[1],
+                          calib.corners_pixel[2], mid_bot], dtype=np.int32)
+    overlay = bg.copy()
+    cv2.fillPoly(overlay, [left_pts],  (45, 65, 40))   # 팀A: 초록
+    cv2.fillPoly(overlay, [right_pts], (40, 45, 65))   # 팀B: 파랑
+    cv2.addWeighted(overlay, 0.85, bg, 0.15, 0, bg)
+
+    # 코트 외곽
+    cv2.polylines(bg, [pts], True, (200, 200, 200), 2, cv2.LINE_AA)
+
+    # 1m 그리드 (옅게)
     for xi in range(1, int(_COURT_W)):
         p0 = court_to_pixel(np.array([[float(xi), 0.0]]), calib)[0].astype(int)
         p1 = court_to_pixel(np.array([[float(xi), _COURT_H]]), calib)[0].astype(int)
-        cv2.line(bg, tuple(p0), tuple(p1), (55, 65, 50), 1, cv2.LINE_AA)
+        cv2.line(bg, tuple(p0), tuple(p1), (50, 60, 48), 1, cv2.LINE_AA)
     for yi in range(1, int(_COURT_H) + 1):
         p0 = court_to_pixel(np.array([[0.0, float(yi)]]), calib)[0].astype(int)
         p1 = court_to_pixel(np.array([[_COURT_W, float(yi)]]), calib)[0].astype(int)
-        cv2.line(bg, tuple(p0), tuple(p1), (55, 65, 50), 1, cv2.LINE_AA)
+        cv2.line(bg, tuple(p0), tuple(p1), (50, 60, 48), 1, cv2.LINE_AA)
+
+    # 중앙선 (굵게)
+    cv2.line(bg, tuple(mid_top), tuple(mid_bot), (160, 160, 60), 2, cv2.LINE_AA)
+
+    # HADO 전술 구역선 (x=1.5, 3.0m — 팀A 쪽; 7.0, 8.5m — 팀B 쪽)
+    for xz, clr in [(1.5, (60, 160, 80)), (3.0, (60, 200, 80)),
+                    (7.0, (80, 100, 200)), (8.5, (60, 80, 200))]:
+        p0 = court_to_pixel(np.array([[xz, 0.0]]), calib)[0].astype(int)
+        p1 = court_to_pixel(np.array([[xz, _COURT_H]]), calib)[0].astype(int)
+        cv2.line(bg, tuple(p0), tuple(p1), clr, 1, cv2.LINE_AA)
+
+    # 레인 경계 (y=2.0, 4.0m)
+    for yz in [2.0, 4.0]:
+        p0 = court_to_pixel(np.array([[0.0, yz]]), calib)[0].astype(int)
+        p1 = court_to_pixel(np.array([[_COURT_W, yz]]), calib)[0].astype(int)
+        cv2.line(bg, tuple(p0), tuple(p1), (60, 130, 80), 1, cv2.LINE_AA)
+
+    # 팀 라벨 (원근 투영 좌표계 내)
+    team_a_mid = court_to_pixel(np.array([[2.5, 3.0]]), calib)[0].astype(int)
+    team_b_mid = court_to_pixel(np.array([[7.5, 3.0]]), calib)[0].astype(int)
+    cv2.putText(bg, "TEAM A", tuple(team_a_mid - [30, 0]),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.55, (80, 200, 100), 1, cv2.LINE_AA)
+    cv2.putText(bg, "TEAM B", tuple(team_b_mid - [30, 0]),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.55, (100, 120, 220), 1, cv2.LINE_AA)
+
     return bg
 
 
@@ -547,29 +644,44 @@ def run(args) -> int:
         print(f"[Demo] MovementModel: {movement_model.pattern_count}패턴 로드")
     for tid in range(1, 4):
         tactic_engine._team_assignment[tid] = "A"
+    for tid in range(4, 7):
+        tactic_engine._team_assignment[tid] = "B"
 
-    # PatternPlayer 초기화 — 팀A 3명만 (발표용 단순화)
+    # PatternPlayer 초기화 — 팀A 3명 + 팀B 3명 (6 vs 6)
     csv_override = Path(args.csv) if getattr(args, "csv", None) else None
 
-    def _pat(pid: int, role: str) -> dict:
-        # csv 지정 시 player_id로 분리, 기본 CSV는 role 풀 전체 공유
+    def _pat(pid: int, role: str, team: str = "A") -> dict:
         if csv_override:
             return _load_pattern_library(csv_path=csv_override, player_id=pid)
-        lib = _load_pattern_library()
+        lib = _load_pattern_library(team="A")   # 항상 팀A 패턴 사용 (팀B는 미러링)
         return {role: lib.get(role, {})}
 
     pat1 = _pat(1, "technician")
     pat2 = _pat(2, "technician")
     pat3 = _pat(3, "main_attacker")
 
+    # 팀B는 팀A 패턴을 미러링 — PatternPlayer(team="B")가 x축 반전 처리
+    pat4 = _pat(4, "main_attacker")
+    pat5 = _pat(5, "defender")
+    pat6 = _pat(6, "technician")
+
     for pid, lib in [(1, pat1), (2, pat2), (3, pat3)]:
         n = sum(len(v) for ctxs in lib.values() for v in ctxs.values())
-        print(f"[Demo] P{pid} 패턴: {n}개")
+        print(f"[Demo] P{pid}(A) 패턴: {n}개")
+    for pid, lib in [(4, pat4), (5, pat5), (6, pat6)]:
+        role = _PLAYER_ROLES.get(pid, "")
+        n = sum(len(v) for ctxs in lib.values() for v in ctxs.values())
+        print(f"[Demo] P{pid}(B/{role[:4]}) 패턴: {n}개 (미러)")
 
     sim: dict[int, PatternPlayer] = {
+        # 팀A: x=0-5m 진영
         1: PatternPlayer(pat1.get("technician",    {}), "A", (1.5, 1.0), seed=1, role_name="technician"),
         2: PatternPlayer(pat2.get("technician",    {}), "A", (4.0, 3.0), seed=2, role_name="technician"),
         3: PatternPlayer(pat3.get("main_attacker", {}), "A", (2.8, 1.0), seed=3, role_name="main_attacker"),
+        # 팀B: x=5-10m 진영 (미러링)
+        4: PatternPlayer(pat4.get("main_attacker", {}), "B", (7.2, 5.0), seed=14, role_name="main_attacker"),
+        5: PatternPlayer(pat5.get("defender",      {}), "B", (9.0, 4.5), seed=15, role_name="defender"),
+        6: PatternPlayer(pat6.get("technician",    {}), "B", (6.5, 1.5), seed=16, role_name="technician"),
     }
 
     # 게임 페이즈 사이클: attack(9s) → transition(2s) → defend(8s) → transition(2s)
@@ -586,14 +698,17 @@ def run(args) -> int:
     out_dir.mkdir(exist_ok=True)
     vid_path = out_dir / "demo.mp4"
 
-    # 반쪽 코트 샘플로 출력 크기 계산
-    _half_w = int(5.0 * px_per_m)
-    _court_half = court_tmpl[:, :_half_w]
-    _sample = combine_views(np.zeros((_FRAME_H, _FRAME_W, 3), dtype=np.uint8), _court_half)
+    # x=0-6m 확장 뷰 (팀A 전체 + 팀B 진입 1m) — 팀B가 화면에 보임
+    _ext_w = int(6.0 * px_per_m)   # 600px
+    _court_ext = court_tmpl[:, :_ext_w]
+    _sample = combine_views(np.zeros((_FRAME_H, _FRAME_W, 3), dtype=np.uint8), _court_ext)
     out_h, out_w = _sample.shape[:2]
     writer = cv2.VideoWriter(str(vid_path), cv2.VideoWriter_fourcc(*"mp4v"),
                              30.0, (out_w, out_h))
     print(f"[Demo] 저장: {vid_path}  ({out_w}×{out_h} @30fps, {args.frames}프레임)")
+
+    # 규칙 발동 누적 카운터 (발표 중 어떤 규칙이 얼마나 활성화됐는지)
+    _rule_counts: dict[str, int] = {r: 0 for r in ("R1", "R2", "R3", "R4", "R5", "R6")}
 
     if not args.headless:
         cv2.namedWindow("HADO Demo", cv2.WINDOW_NORMAL)
@@ -615,7 +730,7 @@ def run(args) -> int:
             for p in sim.values():
                 p.set_context(cur_phase)
 
-        # ── 선수 위치 업데이트 (PatternPlayer 1회 호출) ──────────
+        # ── 선수 위치 업데이트 (팀A + 팀B 모두) ─────────────────
         pos = {pid: p.update() for pid, p in sim.items()}
         if fi >= _WARMUP_FRAMES:
             for pid, (x, y) in pos.items():
@@ -627,13 +742,14 @@ def run(args) -> int:
                         "x": x, "y": y,
                     })
 
+        # 팀A + 팀B 6명 모두 Detection 생성
         dets = [
             Detection(
                 x1=float(b[0]), y1=float(b[1]),
                 x2=float(b[2]), y2=float(b[3]),
                 confidence=0.90,
             )
-            for pid in [1, 2, 3]
+            for pid in [1, 2, 3, 4, 5, 6]
             for b in [_court_to_bbox(*pos[pid], calib)]
         ]
         tracks = tracker.update(dets)
@@ -650,6 +766,11 @@ def run(args) -> int:
         ]
         advices = tactic_engine.analyze(player_states)
 
+        # 규칙 발동 카운터 업데이트
+        for adv in advices:
+            if adv.rule in _rule_counts:
+                _rule_counts[adv.rule] += 1
+
         cam_view = bg.copy()
         draw_detections_on_frame(cam_view, tracks)
 
@@ -659,10 +780,10 @@ def run(args) -> int:
             show_trajectory=True,
             trajectory_length=60,
         )
-        # 전술 분석 패널 (텍스트 전용)
+        # 전술 분석 패널 (텍스트 + HIGH urgency 링)
         birdeye = draw_guide_on_birdeye(birdeye, advices, px_per_m=px_per_m)
 
-        # 선수별 이동방향 화살표 + 의도 뱃지
+        # 선수별 이동방향 화살표 + 의도 뱃지 (팀A + 팀B)
         p_overlays = [
             {
                 "pid":     pid,
@@ -677,16 +798,25 @@ def run(args) -> int:
         ]
         birdeye = draw_player_overlays(birdeye, p_overlays, px_per_m=px_per_m)
 
-        # 팀A 반쪽(x=0–5m) 크롭 → 2배 확대
-        half_w = int(5.0 * px_per_m)
-        birdeye_half = birdeye[:, :half_w].copy()
+        # x=0-6m 확장 크롭 (팀A 전체 + 팀B 진입 구역 1m 노출)
+        ext_w = int(6.0 * px_per_m)
+        birdeye_ext = birdeye[:, :ext_w].copy()
 
-        # 센터라인 레이블
-        bh = birdeye_half.shape[0]
-        cv2.line(birdeye_half, (half_w - 2, 0), (half_w - 2, bh), (180, 180, 60), 2)
-        cv2.putText(birdeye_half, "CENTER LINE",
-                    (half_w - 95, 14), cv2.FONT_HERSHEY_SIMPLEX, 0.38,
+        # 센터라인 + 팀B 진입 경계 레이블
+        bh = birdeye_ext.shape[0]
+        center_px = int(5.0 * px_per_m)
+        cv2.line(birdeye_ext, (center_px, 0), (center_px, bh), (180, 180, 60), 2)
+        cv2.putText(birdeye_ext, "CENTER",
+                    (center_px - 34, 13), cv2.FONT_HERSHEY_SIMPLEX, 0.36,
                     (180, 180, 60), 1, cv2.LINE_AA)
+
+        # 팀B 진입 구역 (x=5-6m) 반투명 하이라이트
+        overlay_b = birdeye_ext.copy()
+        cv2.rectangle(overlay_b, (center_px, 0), (ext_w - 1, bh - 1), (60, 60, 160), -1)
+        cv2.addWeighted(overlay_b, 0.12, birdeye_ext, 0.88, 0, birdeye_ext)
+        cv2.putText(birdeye_ext, "TEAM B",
+                    (center_px + 6, bh // 2), cv2.FONT_HERSHEY_SIMPLEX, 0.38,
+                    (100, 100, 200), 1, cv2.LINE_AA)
 
         # 페이즈 레이블 (좌상단)
         _PHASE_KO = {"attack": "ATTACK", "defend": "DEFEND", "transition": "TRANSITION"}
@@ -694,16 +824,19 @@ def run(args) -> int:
                       "transition": (60, 200, 255)}
         ph_txt = _PHASE_KO.get(cur_phase, cur_phase.upper())
         ph_clr = _PHASE_CLR.get(cur_phase, (200, 200, 200))
-        cv2.rectangle(birdeye_half, (6, 4), (6 + len(ph_txt) * 10 + 8, 24), (0, 0, 0), -1)
-        cv2.putText(birdeye_half, ph_txt, (10, 19),
+        cv2.rectangle(birdeye_ext, (6, 4), (6 + len(ph_txt) * 10 + 8, 24), (0, 0, 0), -1)
+        cv2.putText(birdeye_ext, ph_txt, (10, 19),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.55, ph_clr, 2, cv2.LINE_AA)
 
         # 실시간 구역 점유 HUD (우상단)
-        _draw_zone_hud(birdeye_half, pos)
+        _draw_zone_hud(birdeye_ext, {p: pos[p] for p in pos if p <= 3})
 
-        _draw_status_bar(birdeye_half, sim)
+        # 규칙 발동 카운터 HUD (좌하단)
+        _draw_rule_counter(birdeye_ext, _rule_counts, fi)
 
-        combined = combine_views(cam_view, birdeye_half)
+        _draw_status_bar(birdeye_ext, sim)
+
+        combined = combine_views(cam_view, birdeye_ext)
         draw_hud(combined, fps=30.0, n_players=len(tracks))
         writer.write(combined)
 
