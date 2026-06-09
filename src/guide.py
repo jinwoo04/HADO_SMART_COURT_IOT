@@ -51,27 +51,57 @@ def draw_guide_on_birdeye(
     advices: List[TacticAdvice],
     px_per_m: int = 100,
 ) -> np.ndarray:
-    """전술 분석 결과를 텍스트 패널 + HIGH urgency 경고 링으로 표시.
+    """전술 분석 결과를 화살표 + 텍스트 패널로 표시.
 
-    - 코트 위 이동방향/의도는 draw_player_overlays 담당
-    - HIGH urgency는 해당 선수 위치에 빨간 경고 링을 추가 렌더링
+    - MID urgency: 노란색 화살표 (current → target)
+    - HIGH urgency: 빨간색 굵은 화살표 + 경고 링
     - 전술 규칙 내용은 우하단 텍스트 패널
     """
     out = court_img.copy()
+    h_img, w_img = out.shape[:2]
 
-    active = [a for a in advices if a.distance_m >= 0.15]
-    if active:
-        _draw_tactic_panel(out, active)
-        # HIGH urgency: 선수 위치에 경고 링 표시
-        h_img, w_img = out.shape[:2]
-        for a in active:
-            if a.urgency == "HIGH":
-                px = int(a.current_pos[0] * px_per_m)
-                py = int(a.current_pos[1] * px_per_m)
-                if 0 <= px < w_img and 0 <= py < h_img:
-                    color = URGENCY_COLOR["HIGH"]
-                    cv2.circle(out, (px, py), 22, color, 2, cv2.LINE_AA)
-                    cv2.circle(out, (px, py), 16, color, 1, cv2.LINE_AA)
+    active = [a for a in advices if a.distance_m >= 0.20]
+    if not active:
+        return out
+
+    # ── 전술 방향 화살표 (current_pos → target_pos) ──────────────
+    for a in active:
+        if a.urgency == "LOW":
+            continue
+        color = URGENCY_COLOR.get(a.urgency, (180, 180, 180))
+        thick = 3 if a.urgency == "HIGH" else 2
+
+        cx = int(a.current_pos[0] * px_per_m)
+        cy = int(a.current_pos[1] * px_per_m)
+        tx = int(a.target_pos[0] * px_per_m)
+        ty = int(a.target_pos[1] * px_per_m)
+
+        # 클램핑
+        cx = max(2, min(w_img - 2, cx))
+        cy = max(2, min(h_img - 2, cy))
+        tx = max(2, min(w_img - 2, tx))
+        ty = max(2, min(h_img - 2, ty))
+
+        if (cx, cy) != (tx, ty):
+            cv2.arrowedLine(out, (cx, cy), (tx, ty), color,
+                            thickness=thick, tipLength=0.30, line_type=cv2.LINE_AA)
+            # 목표 위치 작은 원
+            cv2.circle(out, (tx, ty), 4, color, -1, cv2.LINE_AA)
+            # 화살표 중간 지점에 규칙 레이블 (설명 가능성)
+            if a.rule and a.rule != "BASE":
+                mid_x = (cx + tx) // 2 + 4
+                mid_y = (cy + ty) // 2 - 4
+                mid_x = max(2, min(w_img - 20, mid_x))
+                mid_y = max(8, min(h_img - 2, mid_y))
+                cv2.putText(out, a.rule, (mid_x, mid_y),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.32, color, 1, cv2.LINE_AA)
+
+        # HIGH urgency: 선수 위치에 경고 링 추가
+        if a.urgency == "HIGH":
+            cv2.circle(out, (cx, cy), 22, color, 2, cv2.LINE_AA)
+            cv2.circle(out, (cx, cy), 16, color, 1, cv2.LINE_AA)
+
+    _draw_tactic_panel(out, active)
     return out
 
 
