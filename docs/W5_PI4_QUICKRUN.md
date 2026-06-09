@@ -58,18 +58,30 @@ pip install -r requirements.txt
 
 ## W5 실측 명령어 (QA_PREP.md [TODO] 채우기)
 
-### FPS 측정 (NCNN)
+### 자동 측정 (권장) — NCNN + ONNX + TTS 한 번에
+
+```bash
+./run.sh w5_measure             # 카메라로 200프레임 자동 측정
+./run.sh w5 --video clip.mp4   # 미리 녹화된 클립으로 측정 (안정적)
+```
+
+결과 → `data/w5_measurements.md` 자동 저장.  
+QA_PREP.md Q5 / Q6 / Q9 [TODO] 슬롯에 해당 값 붙여넣기.
+
+### 수동 측정 (자동 측정 실패 시 대체)
+
+#### FPS 측정 (NCNN)
 
 ```bash
 ./run.sh bench --frames 200 --imgsz 320 --model yolov8n-pose_ncnn_model
 ```
 
 출력에서 기록:
-- `Wall-clock FPS` → QA_PREP.md Q5, Q7 `[TODO: NCNN fps]`
+- `Wall-clock FPS` → QA_PREP.md Q5 `[TODO: NCNN fps]`
 - `피크 RAM` → Q5 `[TODO: RAM]`
 - `최고 CPU 온도` → Q9 `[TODO: 온도]`
 
-### FPS 측정 (ONNX 비교용)
+#### FPS 측정 (ONNX 비교용)
 
 ```bash
 ./run.sh bench --frames 200 --imgsz 320 --model yolov8n-pose.onnx
