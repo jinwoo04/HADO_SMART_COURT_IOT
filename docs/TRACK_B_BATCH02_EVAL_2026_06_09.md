@@ -85,3 +85,26 @@ frames with strong over-detection symptoms.
 3. Generate the next dataset version.
 4. Export YOLOv8 format.
 5. Retrain locally with `tools/retrain_track_b_export.py`.
+
+## One-Command Replay
+
+For future batches, the full review loop can now be replayed with:
+
+```bash
+./hado_venv/bin/python tools/prepare_track_b_batch_review.py \
+  --video-dir "data/drive_imports/batch02_raw" \
+  --out-dir "data/track_b_batch_review/batch02_v4_eval" \
+  --model "outputs/track_b_retrain_runs/trackb_v4_player_only/train/yolov8n_player_only/weights/best.pt" \
+  --frame-stride 30 \
+  --max-samples 18 \
+  --bundle-make-zip
+```
+
+If detections already exist and only the summary/bundle should be regenerated:
+
+```bash
+./hado_venv/bin/python tools/prepare_track_b_batch_review.py \
+  --skip-process \
+  --out-dir "data/track_b_batch_review/batch02_v4_eval" \
+  --bundle-make-zip
+```
