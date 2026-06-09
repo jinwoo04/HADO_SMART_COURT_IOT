@@ -136,7 +136,7 @@
 >
 > - We have a fully offline, single-camera system running on a Raspberry Pi 4.
 > - Level 1 tracks players, Level 2 provides tactical guidance, Level 3 classifies actions.
-> - 6 tactical rules, 7 action classes, 196 tests passing.
+> - 6 tactical rules, 7 action classes, 209 tests passing.
 >
 > The [TODO] slots — actual fps, RAM, and position error numbers —
 > will be filled in after on-court testing this week.

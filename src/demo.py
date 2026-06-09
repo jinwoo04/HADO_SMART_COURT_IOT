@@ -499,6 +499,70 @@ def _court_to_bbox(xm: float, ym: float, calib) -> np.ndarray:
     return np.array([fx - w_box / 2, fy - h_box, fx + w_box / 2, fy], dtype=np.float32)
 
 
+def _draw_skeleton_overlays(frame: np.ndarray, tracks: list) -> None:
+    """바운딩박스 비율로 합성 스켈레톤(stick figure) 오버레이 — 데모 전용.
+
+    실제 파이프라인에서는 YOLOv8n-pose 17 키포인트를 사용하지만
+    합성 데모는 bbox 비율로 근사 스켈레톤을 생성해 시각적으로 표현.
+    """
+    from src.visualizer import color_for_id
+
+    _LIMB_PAIRS = [
+        (0, 1), (0, 2),          # 코 → 왼/오른 어깨 (목 근사)
+        (1, 3), (3, 5),          # 왼팔
+        (2, 4), (4, 6),          # 오른팔
+        (1, 7), (2, 8),          # 상체 옆면
+        (7, 8),                  # 엉덩이
+        (7, 9), (9, 11),         # 왼다리
+        (8, 10), (10, 12),       # 오른다리
+    ]
+    _LIMB_COLS = [
+        (200, 200, 200), (200, 200, 200),
+        (255, 140, 60),  (255, 140, 60),
+        (60, 140, 255),  (60, 140, 255),
+        (200, 200, 200), (200, 200, 200), (200, 200, 200),
+        (80, 220, 100),  (80, 220, 100),
+        (80, 200, 255),  (80, 200, 255),
+    ]
+
+    for t in tracks:
+        x1, y1, x2, y2 = t.bbox.astype(float)
+        cx = (x1 + x2) / 2
+        w  = x2 - x1
+        h  = y2 - y1
+
+        # 13개 관절 (코+어깨×2+팔꿈치×2+손목×2+엉덩이×2+무릎×2+발목×2)
+        kpts = np.array([
+            [cx,          y1 + h * 0.06],   # 0: 코
+            [cx - w*0.18, y1 + h * 0.22],   # 1: 왼 어깨
+            [cx + w*0.18, y1 + h * 0.22],   # 2: 오른 어깨
+            [cx - w*0.26, y1 + h * 0.44],   # 3: 왼 팔꿈치
+            [cx + w*0.26, y1 + h * 0.44],   # 4: 오른 팔꿈치
+            [cx - w*0.29, y1 + h * 0.61],   # 5: 왼 손목
+            [cx + w*0.29, y1 + h * 0.61],   # 6: 오른 손목
+            [cx - w*0.13, y1 + h * 0.60],   # 7: 왼 엉덩이
+            [cx + w*0.13, y1 + h * 0.60],   # 8: 오른 엉덩이
+            [cx - w*0.15, y1 + h * 0.79],   # 9: 왼 무릎
+            [cx + w*0.15, y1 + h * 0.79],   # 10: 오른 무릎
+            [cx - w*0.14, y1 + h * 0.96],   # 11: 왼 발목
+            [cx + w*0.14, y1 + h * 0.96],   # 12: 오른 발목
+        ], dtype=np.float32)
+
+        kpts_i = kpts.astype(int)
+        base_col = color_for_id(t.track_id)
+
+        for (i, j), lc in zip(_LIMB_PAIRS, _LIMB_COLS):
+            p1 = tuple(kpts_i[i])
+            p2 = tuple(kpts_i[j])
+            cv2.line(frame, p1, p2, lc, 1, cv2.LINE_AA)
+
+        # 관절 점 (코 = 팀 색, 나머지 = 흰색 소점)
+        for ki, kp in enumerate(kpts_i):
+            r = 5 if ki == 0 else 3
+            col = base_col if ki == 0 else (220, 220, 220)
+            cv2.circle(frame, tuple(kp), r, col, -1)
+
+
 # ---------- Role별 히트맵 ----------
 _ROLE_CMAPS = {
     "main_attacker": cv2.COLORMAP_HOT,
@@ -774,6 +838,7 @@ def run(args) -> int:
 
         cam_view = bg.copy()
         draw_detections_on_frame(cam_view, tracks)
+        _draw_skeleton_overlays(cam_view, tracks)
 
         birdeye = draw_players_on_birdeye(
             court_tmpl, tracks, calib,
