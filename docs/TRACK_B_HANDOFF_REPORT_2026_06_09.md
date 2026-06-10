@@ -103,6 +103,14 @@ Google Drive에서 실제 경기 영상을 두 batch로 받아 아래 경로에 
   - CSV / JSONL / optional overlay mp4를 내보냄
   - Track B의 다음 단계인 skeleton-based verification 준비용
 
+- `tools/build_track_b_openai_batch.py`
+  - Track B upload manifest를 OpenAI Batch `/v1/responses` 입력 jsonl로 변환
+  - hard frame image QA 자동화 준비용
+
+- `tools/summarize_track_b_openai_batch.py`
+  - OpenAI Batch 출력 jsonl을 merged CSV / priority CSV / summary로 정리
+  - relabel triage 보조용
+
 ### 3.3 10경기 1차 분석 완료
 
 산출물:
@@ -189,6 +197,8 @@ batch02는 새 경기 10개를 현재 V4 best checkpoint로 다시 훑은 결과
   - `outputs/track_b_retrain_runs/track_b_run_leaderboard.md`
 - 작업자 운영 문서:
   - `docs/TRACK_B_OPERATOR_PLAYBOOK_2026_06_10.md`
+- 협업용 relabel 가이드:
+  - `docs/TRACK_B_BATCH_REVIEW_RELABEL_GUIDE_2026_06_10.md`
 - skeleton phase 브리프:
   - `docs/TRACK_B_SKELETON_PHASE_BRIEF_2026_06_10.md`
 - batch02 평가 문서:

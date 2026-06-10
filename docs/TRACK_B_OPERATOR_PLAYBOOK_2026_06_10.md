@@ -153,7 +153,70 @@ Track B는 아래 6단계를 반복한다.
   --bundle-make-zip
 ```
 
-## 8. 의사결정 규칙
+## 8. OpenAI Batch로 frame QA를 붙이고 싶을 때
+
+이 단계는 필수가 아니라 선택사항이다.
+
+용도:
+
+- hard frame를 사람이 일일이 다 열어보기 전에
+- playable 여부
+- overdetect / underdetect 경향
+- relabel 우선순위
+
+를 한 번 더 자동 정리하고 싶을 때 사용한다.
+
+### 8.1 Batch 입력 파일 만들기
+
+```bash
+./hado_venv/bin/python tools/build_track_b_openai_batch.py \
+  --manifest "data/track_b_batch_review/batch02_v4_eval/roboflow_upload_bundle_v2_playable_bias/upload_manifest.csv" \
+  --out-jsonl "outputs/track_b_openai_batch/batch02_frame_qa_requests.jsonl" \
+  --out-manifest "outputs/track_b_openai_batch/batch02_frame_qa_manifest.csv" \
+  --max-rows 40
+```
+
+기본값:
+
+- `base64` 이미지 임베딩 방식
+- `/v1/responses`용 batch input 생성
+- structured JSON schema 포함
+
+주의:
+
+- 큰 batch는 base64 jsonl 파일이 커질 수 있다.
+- 대량 처리 시에는 `file-id` 방식으로 바꾸는 것이 좋다.
+
+### 8.2 결과를 다시 priority CSV로 합치기
+
+Batch API output file을 `batch_output.jsonl`로 받았다고 가정하면:
+
+```bash
+./hado_venv/bin/python tools/summarize_track_b_openai_batch.py \
+  --request-manifest "outputs/track_b_openai_batch/batch02_frame_qa_manifest.csv" \
+  --batch-output "outputs/track_b_openai_batch/batch02_frame_qa_output.jsonl" \
+  --out-csv "outputs/track_b_openai_batch/batch02_frame_qa_merged.csv" \
+  --out-md "outputs/track_b_openai_batch/batch02_frame_qa_summary.md" \
+  --out-priority-csv "outputs/track_b_openai_batch/batch02_frame_qa_priority.csv"
+```
+
+이 결과로 볼 수 있는 것:
+
+- 프레임별 playable 여부
+- 모델이 본 detector issue 유형
+- relabel decision
+- 기존 priority score에 QA 결과를 더한 combined priority score
+
+권장 사용법:
+
+- 사람이 라벨링하기 전 마지막 정렬용
+- batch03 이상부터 frame 수가 늘어날 때 triage 보조용
+
+관련 협업 문서:
+
+- `docs/TRACK_B_BATCH_REVIEW_RELABEL_GUIDE_2026_06_10.md`
+
+## 9. 의사결정 규칙
 
 ### 계속 player-only로 갈 때
 
@@ -173,7 +236,7 @@ Track B는 아래 6단계를 반복한다.
 
 지금은 아직 여기까지 가지 않는다.
 
-## 9. 우선순위 기준
+## 10. 우선순위 기준
 
 새 batch를 봤을 때 우선순위는 아래 순서로 잡는다.
 
@@ -185,7 +248,7 @@ Track B는 아래 6단계를 반복한다.
 
 즉, “무조건 miss 프레임”이 아니라 “학습 가치가 높은 실제 플레이 장면”이 먼저다.
 
-## 10. 실수 방지 메모
+## 11. 실수 방지 메모
 
 - Track A 발표 파일과 섞지 않기
 - export zip, 원본 영상, 대용량 모델은 git에 올리지 않기
@@ -193,7 +256,7 @@ Track B는 아래 6단계를 반복한다.
 - Roboflow에서 클래스가 늘어나지 않았는지 매번 확인하기
 - 새 버전 이름은 `trackb_v5_player_only`, `trackb_v6_player_only`처럼 고정하기
 
-## 11. 지금 바로 다음에 할 일
+## 12. 지금 바로 다음에 할 일
 
 현재 기준으로 가장 가까운 다음 작업:
 
