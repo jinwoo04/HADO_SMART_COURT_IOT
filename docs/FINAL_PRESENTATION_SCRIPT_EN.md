@@ -100,7 +100,7 @@
 
 ## Slide 8 — Validation
 
-> "For validation, I wrote 233 unit tests covering all core modules.
+> "For validation, I wrote 236 unit tests covering all core modules.
 >
 > Each tactical rule has dedicated test cases, including edge cases such as:
 > exactly two opponents where they split 50-50 across lanes — which should *not* trigger R6.
@@ -136,7 +136,7 @@
 >
 > - We have a fully offline, single-camera system running on a Raspberry Pi 4.
 > - Level 1 tracks players, Level 2 provides tactical guidance, Level 3 classifies actions.
-> - 6 tactical rules, 7 action classes, 233 tests passing.
+> - 6 tactical rules, 7 action classes, 236 tests passing.
 >
 > The [TODO] slots — actual fps, RAM, and position error numbers —
 > will be filled in after on-court testing this week.
@@ -169,4 +169,4 @@
 ---
 
 *이 대본은 템플릿입니다. 발표 당일 자신의 말투로 바꿔도 됩니다.*
-*핵심은 숫자(15 fps, 10 cm, 233 tests, 635 patterns)와 이유(why rules not ML).*
+*핵심은 숫자(15 fps, 10 cm, 236 tests, 635 patterns)와 이유(why rules not ML).*

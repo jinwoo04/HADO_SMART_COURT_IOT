@@ -180,6 +180,51 @@ def test_open_nonexistent_file_raises():
     print("  ✓ 존재하지 않는 파일 → RuntimeError")
 
 
+def test_backend_property_after_open():
+    """open() 후 backend 프로퍼티가 'opencv'를 반환해야 한다."""
+    path = _make_video(n_frames=3)
+    cam = Camera(source=path, prefer_picamera=False)
+    assert cam.backend == "none"      # 열기 전
+    cam.open()
+    assert cam.backend == "opencv"    # 열린 후
+    cam.close()
+    print("  ✓ backend property: none → opencv → none")
+
+
+def test_threaded_read_before_first_frame_returns_true():
+    """threaded=True 모드에서 스레드가 첫 프레임을 캡처하기 전
+    read() → (True, zeros) 반환 (False이면 메인 루프가 즉시 종료되는 버그)."""
+    import threading, time
+    path = _make_video(n_frames=5)
+    cam = Camera(source=path, prefer_picamera=False, threaded=True,
+                 width=320, height=240)
+    # 스레드 캡처가 시작되기 전에 즉시 read() 호출
+    cam._cap = __import__("cv2").VideoCapture(path)
+    cam._cap.set(__import__("cv2").CAP_PROP_BUFFERSIZE, 1)
+    cam._backend = "opencv"
+    cam._threaded = True
+    # _latest_frame=None 상태에서 read() 호출
+    ok, frame = cam.read()
+    cam.close()
+    assert ok is True, "threaded 첫 프레임 전 read()가 False를 반환하면 안 됨"
+    assert frame.shape == (240, 320, 3), f"zeros 프레임 shape 불일치: {frame.shape}"
+    print("  ✓ threaded 첫 프레임 전 read() → (True, zeros) 확인")
+
+
+def test_open_threaded_starts_thread():
+    """threaded=True 로 open하면 백그라운드 스레드가 시작된다."""
+    import time
+    path = _make_video(n_frames=30)
+    cam = Camera(source=path, prefer_picamera=False, threaded=True)
+    cam.open()
+    time.sleep(0.1)  # 스레드가 첫 프레임 캡처할 시간
+    ok, frame = cam.read()
+    cam.close()
+    assert ok is True
+    assert frame is not None
+    print("  ✓ threaded 캡처 스레드 동작 확인")
+
+
 # ── 진입점 ────────────────────────────────────────────────────────────────────
 
 def run_all():
@@ -199,6 +244,9 @@ def run_all():
     test_context_manager_opens_and_closes()
     test_context_manager_closes_on_exception()
     test_open_nonexistent_file_raises()
+    test_backend_property_after_open()
+    test_threaded_read_before_first_frame_returns_true()
+    test_open_threaded_starts_thread()
     print("\n  모든 테스트 통과 ✓")
 
 
