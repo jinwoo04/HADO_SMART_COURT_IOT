@@ -20,6 +20,8 @@
   - 협업자 공유용 요약 보고서
 - `docs/TRACK_A_PRESENTATION_SCOPE_BRIEF_2026_06_10.md`
   - 발표 때 실제로 다룬 Track A 구현 범위만 정리한 Claude 전달용 브리프
+- `docs/TRACK_A_B_OPENAI_GITHUB_REFERENCE_2026_06_10.md`
+  - Track A / Track B / 자동화 기준으로 참고할 OpenAI 공식 문서와 GitHub 리소스 정리
 
 ## Track A: IoT 발표용 버전
 
