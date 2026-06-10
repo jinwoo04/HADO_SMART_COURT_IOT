@@ -66,6 +66,10 @@ case "$CMD" in
         # Pi4 라이브 카메라 동작 인식 (NCNN 자동 선택, threaded 캡처)
         python -m src.action_demo --threaded "${@:2}"
         ;;
+    preflight|check|check-pi)
+        # Pi4 현장 테스트 사전 점검 (의존성/모델/TTS/카메라/RAM/캘리브레이션)
+        python -m src.pi_preflight "${@:2}"
+        ;;
     measure-error|measure)
         python -m src.measure_error "${@:2}"
         ;;

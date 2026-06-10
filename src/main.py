@@ -95,22 +95,53 @@ def tracks_to_player_states(tracks, calib: Calibration) -> list[PlayerState]:
     return states
 
 
+def _resolve_model_path(config_model: str) -> str:
+    """NCNN → ONNX → config 순으로 사용 가능한 모델 자동 선택."""
+    ncnn = PROJECT_ROOT / "yolov8n-pose_ncnn_model"
+    onnx = PROJECT_ROOT / "yolov8n-pose.onnx"
+    if ncnn.exists():
+        print(f"[Main] NCNN 모델 감지 → 자동 전환 (Pi4 최적): {ncnn}")
+        return str(ncnn)
+    if onnx.exists():
+        print(f"[Main] ONNX 모델 감지 → 자동 전환: {onnx}")
+        return str(onnx)
+    return config_model
+
+
+def _check_display(args) -> bool:
+    """DISPLAY 없는 SSH 환경에서 headless 자동 전환. 반환값: 실제 headless 여부."""
+    import os, platform
+    if args.headless:
+        return True
+    if platform.system() == "Linux" and not os.environ.get("DISPLAY"):
+        print("[Main] ⚠ DISPLAY 환경변수 없음 → headless 자동 전환")
+        print("[Main]   GUI 표시가 필요하면 X11 포워딩(ssh -X) 또는 --headless --record 사용")
+        return True
+    return False
+
+
 def run(args):
     config = load_config(Path(args.config))
     print(f"[Main] 설정 로드: {args.config}")
 
+    # SSH/headless 자동 감지
+    args.headless = _check_display(args)
+
     calib_path = Path(args.calibration)
     if not calib_path.exists():
         print(f"[!] 캘리브레이션 없음: {calib_path}")
-        print(f"    먼저 `python -m src.calibrate` 실행하세요.")
+        print(f"    먼저 `./run.sh calibrate` 실행하세요.")
         return 1
     calib = Calibration.from_json(calib_path)
     print(f"[Main] 캘리브레이션: {calib.court_width_m}m × {calib.court_height_m}m")
     print(f"[Main] Level: {args.level}")
 
+    # 모델 자동 선택 (NCNN > ONNX > config)
+    model_path = _resolve_model_path(config["detector"]["model_path"])
+
     # 모듈 초기화
     detector = PersonDetector(
-        model_path=config["detector"]["model_path"],
+        model_path=model_path,
         imgsz=config["detector"]["imgsz"],
         conf_threshold=config["detector"]["conf_threshold"],
         iou_threshold=config["detector"]["iou_threshold"],
