@@ -1,11 +1,11 @@
-"""src/vest.py — detect_vest() 단위 테스트."""
+"""src/vest.py — detect_vest(), draw_vest_label() 단위 테스트."""
 from __future__ import annotations
 
 import numpy as np
 import pytest
 
 from src.detector import Detection
-from src.vest import VestResult, detect_vest, VEST_COLOR_BGR, ROLE_KO
+from src.vest import VestResult, detect_vest, draw_vest_label, VEST_COLOR_BGR, ROLE_KO
 
 
 def _det(x1=0.0, y1=0.0, x2=100.0, y2=200.0) -> Detection:
@@ -81,6 +81,34 @@ class TestDetectVest:
         frame = _solid_frame(480, 640, (0, 0, 200))
         result = detect_vest(frame, det)
         assert 0.0 <= result.pixel_ratio <= 1.0
+
+
+class TestDrawVestLabel:
+
+    def test_unknown_role_no_change(self):
+        """role=unknown이면 프레임을 수정하지 않는다."""
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        original = frame.copy()
+        det = _det(x1=100, y1=50, x2=200, y2=300)
+        result = VestResult(role="unknown", confidence=0.0, pixel_ratio=0.0)
+        draw_vest_label(frame, det, result)
+        assert np.array_equal(frame, original), "unknown role에서 프레임이 변경됨"
+
+    def test_known_role_modifies_frame(self):
+        """role이 알려진 포지션이면 라벨을 그려 프레임이 변경된다."""
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        det = _det(x1=100, y1=50, x2=200, y2=300)
+        result = VestResult(role="main_attacker", confidence=0.85, pixel_ratio=0.3)
+        draw_vest_label(frame, det, result)
+        assert frame.any(), "main_attacker 라벨이 그려지지 않았다"
+
+    def test_draw_vest_label_no_crash_all_roles(self):
+        """모든 역할에 대해 draw_vest_label이 예외 없이 동작해야 한다."""
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        det = _det(x1=50, y1=50, x2=150, y2=250)
+        for role in ("main_attacker", "technician", "defender", "unknown"):
+            f = frame.copy()
+            draw_vest_label(f, det, VestResult(role=role, confidence=0.7, pixel_ratio=0.2))
 
 
 class TestVestConstants:
