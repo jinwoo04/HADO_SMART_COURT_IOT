@@ -158,6 +158,61 @@ def test_empty_csv(tmp_path):
     assert m.predict((1.0, 1.0), "technician", "attack", "A") is None
 
 
+# ---------- coverage() 메서드 ----------
+
+def test_coverage_returns_dict(simple_csv):
+    """coverage()는 (role, context) → 패턴 수 dict를 반환한다."""
+    m = MovementModel(simple_csv)
+    cov = m.coverage()
+    assert isinstance(cov, dict)
+    assert cov[("technician", "attack")] == 3   # 패턴 1~3
+    assert cov[("technician", "defend")] == 1   # 패턴 4
+
+
+# ---------- intent 필터 ----------
+
+def test_intent_filter_uses_matching(tmp_path):
+    """intent가 일치하면 해당 패턴만 사용한다."""
+    header = ["pattern_id","step","player_id","team","role",
+              "from_x","from_y","to_x","to_y","context","timestamp","intent"]
+    rows = [
+        dict(pattern_id=1,step=1,player_id=1,team="A",role="technician",
+             from_x=0.0,from_y=0.0,to_x=4.0,to_y=0.0,context="attack",timestamp="t",intent="gap_exploit"),
+        dict(pattern_id=2,step=1,player_id=2,team="A",role="technician",
+             from_x=0.0,from_y=0.0,to_x=0.5,to_y=0.0,context="attack",timestamp="t",intent="lure_attention"),
+    ]
+    p = tmp_path / "intent.csv"
+    import csv as _csv
+    with open(p, "w", newline="") as f:
+        w = _csv.DictWriter(f, fieldnames=header)
+        w.writeheader()
+        w.writerows(rows)
+    m = MovementModel(p)
+    pred = m.predict((0.0, 0.0), "technician", "attack", "A", intent="gap_exploit")
+    assert pred is not None
+    assert pred.intent == "gap_exploit"
+
+
+def test_intent_filter_fallback(tmp_path):
+    """intent가 없는 패턴만 있으면 전체로 fallback해 None이 아니어야 한다."""
+    header = ["pattern_id","step","player_id","team","role",
+              "from_x","from_y","to_x","to_y","context","timestamp","intent"]
+    rows = [
+        dict(pattern_id=1,step=1,player_id=1,team="A",role="technician",
+             from_x=0.0,from_y=0.0,to_x=3.0,to_y=0.0,context="attack",timestamp="t",intent="lure_attention"),
+    ]
+    p = tmp_path / "fallback.csv"
+    import csv as _csv
+    with open(p, "w", newline="") as f:
+        w = _csv.DictWriter(f, fieldnames=header)
+        w.writeheader()
+        w.writerows(rows)
+    m = MovementModel(p)
+    # 존재하지 않는 intent → fallback → 전체 후보 사용
+    pred = m.predict((0.0, 0.0), "technician", "attack", "A", intent="nonexistent_intent")
+    assert pred is not None, "intent fallback 시 None이면 안 됨"
+
+
 # ---------- 실제 CSV 연동 ----------
 
 def test_real_csv_loads():
