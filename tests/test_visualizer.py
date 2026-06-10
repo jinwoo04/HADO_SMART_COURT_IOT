@@ -190,6 +190,33 @@ def test_draw_hud_modifies_top():
     print("  ✓ HUD 상단 렌더링 확인")
 
 
+def test_draw_hud_recording_differs():
+    """recording=True일 때 HUD 픽셀이 False와 달라야 한다 (REC 텍스트)."""
+    f_normal = np.zeros((720, 1280, 3), dtype=np.uint8)
+    f_rec    = np.zeros((720, 1280, 3), dtype=np.uint8)
+    draw_hud(f_normal, fps=25.0, n_players=2, recording=False)
+    draw_hud(f_rec,    fps=25.0, n_players=2, recording=True)
+    assert not np.array_equal(f_normal, f_rec), "REC 표시로 HUD가 달라야 함"
+    print("  ✓ draw_hud recording=True/False 차이 확인")
+
+
+def test_color_for_id_distinct_first6():
+    """첫 6개 ID는 모두 다른 색상을 가져야 한다."""
+    colors = [color_for_id(i) for i in range(1, 7)]
+    assert len(set(colors)) == 6, f"중복 색상 존재: {colors}"
+    print(f"  ✓ color_for_id ID 1~6 모두 다른 색상")
+
+
+def test_draw_players_empty_tracks_unchanged():
+    """트랙이 없으면 court_img가 변경되지 않아야 한다."""
+    calib = _make_calib()
+    court = render_court_birdeye(calib, px_per_m=100)
+    original = court.copy()
+    result = draw_players_on_birdeye(court, [], calib, px_per_m=100)
+    assert np.array_equal(result, original), "빈 트랙에서 court 변경됨"
+    print("  ✓ draw_players_on_birdeye: 빈 트랙 → court 불변")
+
+
 # ── 진입점 ─────────────────────────────────────────────────────────────────────
 
 def run_all():
@@ -210,6 +237,9 @@ def run_all():
     test_combine_views_width()
     test_draw_hud_preserves_shape()
     test_draw_hud_modifies_top()
+    test_draw_hud_recording_differs()
+    test_color_for_id_distinct_first6()
+    test_draw_players_empty_tracks_unchanged()
     print("\n  모든 테스트 통과 ✓")
 
 

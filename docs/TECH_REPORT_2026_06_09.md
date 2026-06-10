@@ -135,14 +135,14 @@ HUD 구성:
 ## 4. 테스트 현황
 
 ```
-전체: 222개 통과 (0 실패)
+전체: 225개 통과 (0 실패)
   test_tactic_engine.py: 52개 (R1~R6 규칙 + R6 신규 6개)
   test_tracker.py:       26개
   test_guide.py:         27개 (_RULE_KO 커버리지 3개 추가)
   test_pose.py:          21개 (쉴드 3개 + draw_skeleton 3개 포함)
   test_movement_model.py:17개
   test_detector.py:      15개
-  test_visualizer.py:    14개
+  test_visualizer.py:    17개 (recording, distinct색상, 빈트랙 추가)
   test_measure_w5.py:    13개 (W5 실측 헬퍼)
   test_camera.py:        13개
   test_vest.py:          10개
