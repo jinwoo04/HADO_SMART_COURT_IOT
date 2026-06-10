@@ -761,7 +761,16 @@ def run(args) -> int:
 
     out_dir  = PROJECT_ROOT / "data"
     out_dir.mkdir(exist_ok=True)
-    vid_path = out_dir / "demo.mp4"
+    if getattr(args, "out", None):
+        vid_path = Path(args.out)
+        vid_path.parent.mkdir(parents=True, exist_ok=True)
+    else:
+        vid_path = out_dir / "demo.mp4"
+        # 제출용 demo.mp4 실수 덮어쓰기 방지: 짧은 스모크 실행은 별도 파일로
+        if args.frames < 600:
+            vid_path = out_dir / "demo_smoke.mp4"
+            print(f"[Demo] frames<600 — 제출용 demo.mp4 보호를 위해 {vid_path.name}에 저장"
+                  f" (강제로 demo.mp4에 쓰려면 --out data/demo.mp4)")
 
     # x=0-6m 확장 뷰 (팀A 전체 + 팀B 진입 1m) — 팀B가 화면에 보임
     _ext_w = int(6.0 * px_per_m)   # 600px
@@ -936,6 +945,8 @@ def main():
                         help="총 프레임 수 (600=20초 @30fps)")
     parser.add_argument("--csv", type=str, default=None,
                         help="패턴 CSV 경로 (기본: data/movement_data.csv)")
+    parser.add_argument("--out", type=str, default=None,
+                        help="출력 mp4 경로 (기본: data/demo.mp4, 600프레임 미만이면 data/demo_smoke.mp4)")
     raise SystemExit(run(parser.parse_args()))
 
 
