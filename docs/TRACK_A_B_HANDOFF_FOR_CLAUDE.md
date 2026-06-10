@@ -5,6 +5,8 @@
 이 프로젝트는 현재 두 가지 목적의 작업이 같은 로컬 저장소에서 진행되고 있다. 앞으로 커밋, 브랜치, PR, 자동화 작업을 만들 때 반드시 아래 두 트랙을 구분한다.
 
 상세 최신 인계:
+- `docs/CLAUDE_LATEST_TRACK_A_B_HANDOFF_2026_06_10.md`
+  - Claude에게 바로 전달하기 좋은 최신 단일 handoff 문서
 - `docs/CLAUDE_CODE_CONTINUATION_BRIEF_2026_06_08.md`
   - 중간발표 3분 영어 대본
   - Track A 발표용 설명 흐름
