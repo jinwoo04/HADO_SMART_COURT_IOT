@@ -233,10 +233,9 @@ def run(args) -> int:
                 _put_kr(frame, "카메라 앞에 서주세요",
                         (w // 2 - 100, h // 2), 20, (180, 180, 180))
 
-            # 감지된 인원 수
-            cv2.putText(frame, f"감지: {len(dets)}명",
-                        (10, frame.shape[0] - 100),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (130, 130, 130), 1)
+            # 감지된 인원 수 (cv2.putText는 한글이 ?로 깨짐 → put_text_kr 사용)
+            _put_kr(frame, f"감지: {len(dets)}명",
+                    (10, frame.shape[0] - 112), 13, (130, 130, 130))
 
             # 녹화
             if writer is None and args.record:
@@ -270,7 +269,8 @@ def run(args) -> int:
             writer.release()
             print(f"[ActionDemo] 저장 완료: {args.record}")
         cam.close()
-        cv2.destroyAllWindows()
+        if not args.headless:   # headless 빌드(OpenCV no-GUI)에서 크래시 방지 — Pi4 SSH 경로
+            cv2.destroyAllWindows()
 
     print(f"[ActionDemo] 종료 — {frame_idx}프레임, 평균 FPS {fps:.1f}")
     return 0
