@@ -347,7 +347,10 @@ def test_voice_guide_korean_voice_selected():
     """pyttsx3 설치 환경에서 한국어 음성이 선택되는지 확인."""
     pytest.importorskip("pyttsx3")
     import pyttsx3
-    engine = pyttsx3.init()
+    try:
+        engine = pyttsx3.init()
+    except (RuntimeError, OSError) as e:
+        pytest.skip(f"TTS 엔진 초기화 불가 환경 (espeak 미설치 등) — {e}")
     voices = engine.getProperty("voices")
     ko_voices = [v for v in voices
                  if "ko" in (v.id or "").lower() or "korean" in (v.name or "").lower()]
