@@ -30,11 +30,14 @@ from PIL import Image, ImageDraw, ImageFont
 
 # ── 한글 폰트 (macOS / Linux 자동 선택) ──────────────────────
 def _find_korean_font() -> Optional[str]:
-    candidates = [
+    import os
+    env_font = os.environ.get("HADO_KR_FONT")  # 환경변수 우선 (배포 환경 유연성)
+    candidates = ([env_font] if env_font else []) + [
         "/Library/Fonts/AppleSDGothicNeo.ttc",                    # macOS (Sequoia/Sonoma)
         "/System/Library/Fonts/Supplemental/AppleGothic.ttf",     # macOS (older)
         "/Library/Fonts/NanumGothic.ttf",                         # macOS (사용자 설치)
-        "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",        # Ubuntu
+        str(Path.home() / ".fonts" / "NanumGothic.ttf"),          # 사용자 설치 (Pi4 포함)
+        "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",        # Ubuntu/Pi OS
         "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", # Linux
     ]
     for p in candidates:
@@ -55,11 +58,32 @@ def _kr_font(size: int) -> ImageFont.FreeTypeFont:
 
 def put_text_kr(img: np.ndarray, text: str, xy: Tuple[int,int],
                 size: int, color: Tuple[int,int,int]) -> None:
-    """한글을 포함한 텍스트를 img에 in-place로 렌더링 (BGR)."""
-    pil = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
-    ImageDraw.Draw(pil).text(xy, text, font=_kr_font(size),
+    """한글을 포함한 텍스트를 img에 in-place로 렌더링 (BGR).
+
+    성능: 전체 프레임이 아닌 텍스트 bbox 주변 ROI만 PIL로 변환한다.
+    (프레임당 텍스트 10여 개 기준 렌더링 비용 대폭 감소 — Pi4 FPS에 직결)
+    """
+    if not text:
+        return
+    font = _kr_font(size)
+    x, y = int(xy[0]), int(xy[1])
+    try:
+        l, t, r, b = font.getbbox(text)
+    except AttributeError:  # Pillow < 8.0 호환
+        w_px, h_px = font.getsize(text)
+        l, t, r, b = 0, 0, w_px, h_px
+    pad = 2
+    x0 = max(0, x + l - pad)
+    y0 = max(0, y + t - pad)
+    x1 = min(img.shape[1], x + r + pad)
+    y1 = min(img.shape[0], y + b + pad)
+    if x0 >= x1 or y0 >= y1:  # 텍스트가 화면 밖
+        return
+    roi = img[y0:y1, x0:x1]
+    pil = Image.fromarray(cv2.cvtColor(roi, cv2.COLOR_BGR2RGB))
+    ImageDraw.Draw(pil).text((x - x0, y - y0), text, font=font,
                              fill=(color[2], color[1], color[0]))
-    img[:] = cv2.cvtColor(np.array(pil), cv2.COLOR_RGB2BGR)
+    img[y0:y1, x0:x1] = cv2.cvtColor(np.array(pil), cv2.COLOR_RGB2BGR)
 
 # ── 코트 상수 ──────────────────────────────────────────────
 COURT_W_M = 10.0
