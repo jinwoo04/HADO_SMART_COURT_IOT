@@ -135,7 +135,7 @@ HUD 구성:
 ## 4. 테스트 현황
 
 ```
-전체: 253개 통과 (0 실패)
+전체: 257개 통과 (0 실패)
   test_tactic_engine.py: 52개 (R1~R6 규칙 + R6 신규 6개)
   test_tracker.py:       26개
   test_guide.py:         27개 (_RULE_KO 커버리지 3개 추가)
@@ -149,6 +149,7 @@ HUD 구성:
   test_benchmark.py:     11개 (benchmark() 반환 dict 5개 추가)
   test_pi_preflight.py: 14개 (신규 — Pi4 사전 점검)
   test_homography.py:     8개 (존 라인·마진·배치 검증 추가)
+  test_annotate.py:       4개 (신규 — put_text_kr ROI 렌더링)
 ```
 
 ## 4.1 새벽 코드 리뷰 수정 사항 (2026-06-09)
