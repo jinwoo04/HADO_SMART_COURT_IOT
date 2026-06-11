@@ -24,6 +24,14 @@ pip install -r requirements.txt
 
 ## 현장 실행 순서
 
+### Step 0 — 사전 점검 (도착 직후 1분)
+
+```bash
+./run.sh preflight
+# 의존성/모델/TTS/카메라/RAM/캘리브레이션 7항목 자동 점검
+# ❌ 항목이 있으면 출력된 수정 방법 따른 후 재실행
+```
+
 ### Step 1 — 캘리브레이션 (코트 코너 마커 부착 후)
 
 ```bash
@@ -93,11 +101,15 @@ QA_PREP.md Q5 / Q6 / Q9 [TODO] 슬롯에 해당 값 붙여넣기.
 
 ```bash
 # 코트 위 알려진 위치 10곳에 마커 부착 (예: 모서리 2곳 + 라인 교차 8곳)
-# 마커 실제 좌표(m) vs 시스템 추정 좌표(m) 수동 비교
-# CSV 녹화 후 분석:
+# CSV 녹화:
 ./run.sh main --level 1
-# 'r' 키 → CSV 시작 → 10 위치 차례로 서기 → 'r' 키 → CSV 중지
-# data/position_logs/positions_*.csv 확인
+# 'r' 키 → CSV 시작 → 10 위치 차례로 (각 3~5초) 서기 → 'r' 키 → CSV 중지
+
+# RMS 오차 자동 계산 (measure_error — 서있던 순서대로 기준 좌표 입력):
+./run.sh measure-error --csv data/position_logs/positions_XXXXXX.csv \
+    --ref 0.0,0.0 5.0,0.0 10.0,0.0 0.0,3.0 5.0,3.0 10.0,3.0 \
+          0.0,6.0 5.0,6.0 10.0,6.0 5.0,1.5
+# 출력된 RMS(cm) → QA_PREP.md Q6 + w5_measurements.md 위치오차 표에 기입
 ```
 
 ---
