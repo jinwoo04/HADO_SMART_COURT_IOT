@@ -246,7 +246,63 @@ skeleton verification을 본격화해도 되는 조건:
 2. `match02.mp4` — high-count + under-detect 혼재
 3. `match07.mp4` — 상대적으로 양호한 baseline 비교용
 
-## 10. 다음 작업 순서
+## 10. skeleton smoke 결과
+
+v5 relabel 전이지만, skeleton review 도구가 현재 영상에서 동작하는지 확인하기 위해
+v4 기준 smoke를 2개 영상에 실행했다.
+
+실행 명령:
+
+```bash
+./hado_venv/bin/python tools/export_track_b_pose_review.py \
+  --video "data/drive_imports/batch02_raw/match08.mp4" \
+  --out-dir "data/track_b_pose_review/batch02_match08_v4_smoke" \
+  --pt \
+  --device mps \
+  --frame-stride 30 \
+  --max-frames 30 \
+  --no-video
+
+./hado_venv/bin/python tools/export_track_b_pose_review.py \
+  --video "data/drive_imports/batch02_raw/match07.mp4" \
+  --out-dir "data/track_b_pose_review/batch02_match07_v4_smoke" \
+  --pt \
+  --device mps \
+  --frame-stride 30 \
+  --max-frames 30 \
+  --no-video
+```
+
+결과:
+
+| Video | 성격 | Processed frames | Track rows | Frames with tracks | Unique tracks | Main actions |
+|---|---|---:|---:|---:|---:|---|
+| `match08` | severity 최고, effect overlap 많음 | 30 | 21 | 12 | 15 | ready 17, dodge_r 3, dodge_l 1 |
+| `match07` | 상대적으로 양호한 비교군 | 30 | 30 | 21 | 13 | ready 16, dodge_l 10, dodge_r 3, charge 1 |
+
+생성 산출물:
+
+```text
+data/track_b_pose_review/batch02_match08_v4_smoke/match08_pose_tracks.csv
+data/track_b_pose_review/batch02_match08_v4_smoke/match08_pose_tracks.jsonl
+data/track_b_pose_review/batch02_match08_v4_smoke/match08_pose_summary.json
+data/track_b_pose_review/batch02_match07_v4_smoke/match07_pose_tracks.csv
+data/track_b_pose_review/batch02_match07_v4_smoke/match07_pose_tracks.jsonl
+data/track_b_pose_review/batch02_match07_v4_smoke/match07_pose_summary.json
+```
+
+판단:
+
+- `export_track_b_pose_review.py`는 현재 환경에서 정상 실행된다.
+- `match08`은 detection/track row가 적고 unique track이 많아, heavy effect 구간에서 track id churn이 크다.
+- `match07`은 비교적 더 많은 frame에서 pose row가 나오지만, 여전히 action은 `ready/dodge` 위주로 보수적으로 나온다.
+- court coordinate는 임시 homography이므로 실제 위치 정확도 판단용이 아니라 pipeline sanity check용이다.
+
+결론:
+
+> skeleton/action verification은 도구 수준에서는 시작 가능하지만, v5 relabel 이후 player-only over-detection을 줄인 다음 다시 비교하는 것이 맞다.
+
+## 11. 다음 작업 순서
 
 현재 가장 자연스러운 순서:
 
