@@ -92,6 +92,29 @@ Track B는 아래 6단계를 반복한다.
 - 첫 pass: `30~40장`
 - follow-up: `40~90장`
 
+### 5.1 업로드 전에 review packet 만들기
+
+Roboflow에 올리기 전에 contact sheet와 checklist를 만들면
+협업자가 어떤 프레임을 왜 보는지 빠르게 이해할 수 있다.
+
+```bash
+./hado_venv/bin/python tools/build_track_b_relabel_review_packet.py \
+  --manifest "data/track_b_batch_review/batch02_v4_eval/roboflow_upload_bundle_v2_playable_bias/upload_manifest.csv" \
+  --out-dir "outputs/track_b_relabel_review_packet/batch02_v4_playable_bias" \
+  --cols 4
+```
+
+주요 출력:
+
+- `relabel_contact_sheet.jpg`
+  - 40장을 한 장으로 확인하는 contact sheet
+- `relabel_checklist.csv`
+  - Roboflow에서 볼 순서, 이유, 수정 힌트
+- `README.md`
+  - 라벨링 규칙과 요약
+
+이 packet은 git에 올리는 산출물이 아니라 로컬 검토용이다.
+
 ## 6. Roboflow export를 받았을 때
 
 다운로드 폴더 예시:

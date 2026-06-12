@@ -141,6 +141,29 @@ playable bias 기준으로 추린 우선 묶음이다.
 
 ## 8. 협업자 작업 순서
 
+### Step 0. review packet 확인
+
+Roboflow를 열기 전에 아래 명령으로 review packet을 생성한다.
+
+```bash
+./hado_venv/bin/python tools/build_track_b_relabel_review_packet.py \
+  --manifest "data/track_b_batch_review/batch02_v4_eval/roboflow_upload_bundle_v2_playable_bias/upload_manifest.csv" \
+  --out-dir "outputs/track_b_relabel_review_packet/batch02_v4_playable_bias" \
+  --cols 4
+```
+
+먼저 확인할 파일:
+
+- `outputs/track_b_relabel_review_packet/batch02_v4_playable_bias/relabel_contact_sheet.jpg`
+- `outputs/track_b_relabel_review_packet/batch02_v4_playable_bias/relabel_checklist.csv`
+
+contact sheet의 `#order` 번호와 checklist의 `review_order`가 대응된다.
+
+주의:
+
+- contact sheet에서 scoreboard, roster, intro처럼 non-playable로 보이는 이미지는 Roboflow에서 skip 후보로 본다.
+- high-count 장면은 대부분 effect/shield가 player로 잘못 잡힌 케이스이므로 가짜 player box 삭제가 핵심이다.
+
 ### Step 1. 업로드
 
 아래 폴더 또는 zip을 Roboflow 프로젝트에 업로드한다.

@@ -149,6 +149,7 @@ So the current Track B priority is:
 - `tools/export_track_b_pose_review.py`
 - `tools/build_track_b_openai_batch.py`
 - `tools/summarize_track_b_openai_batch.py`
+- `tools/build_track_b_relabel_review_packet.py`
 
 ## 6. Track B current relabel target
 
@@ -166,6 +167,21 @@ Most important files inside:
   - `data/track_b_batch_review/batch02_v4_eval/batch02_summary.md`
 - priority CSV:
   - `data/track_b_batch_review/batch02_v4_eval/batch02_priority.csv`
+
+Recommended local pre-review packet:
+
+```bash
+./hado_venv/bin/python tools/build_track_b_relabel_review_packet.py \
+  --manifest "data/track_b_batch_review/batch02_v4_eval/roboflow_upload_bundle_v2_playable_bias/upload_manifest.csv" \
+  --out-dir "outputs/track_b_relabel_review_packet/batch02_v4_playable_bias" \
+  --cols 4
+```
+
+This creates:
+
+- `relabel_contact_sheet.jpg`
+- `relabel_checklist.csv`
+- `README.md`
 
 Relabel rules:
 
