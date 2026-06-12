@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Track A Field Test Board</title>
+  <style>
+    :root {
+      --bg: #f6f7f2;
+      --ink: #172026;
+      --muted: #59656f;
+      --line: #cfd7d5;
+      --panel: #ffffff;
+      --teal: #0f766e;
+      --blue: #1d4ed8;
+      --amber: #b45309;
+      --red: #b91c1c;
+      --green: #15803d;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      letter-spacing: 0;
+    }
+
+    main {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 28px 24px 40px;
+    }
+
+    header {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr;
+      gap: 24px;
+      align-items: end;
+      border-bottom: 2px solid var(--ink);
+      padding-bottom: 18px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 34px;
+      line-height: 1.08;
+    }
+
+    .subtitle {
+      margin: 0;
+      color: var(--muted);
+      font-size: 16px;
+      line-height: 1.5;
+    }
+
+    .guardrail {
+      border-left: 5px solid var(--teal);
+      padding: 12px 16px;
+      background: #e7f4f1;
+      font-size: 15px;
+      line-height: 1.45;
+    }
+
+    section {
+      margin-top: 28px;
+    }
+
+    h2 {
+      margin: 0 0 14px;
+      font-size: 20px;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 14px;
+    }
+
+    .unit {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px;
+      min-height: 112px;
+    }
+
+    .unit h3 {
+      margin: 0 0 10px;
+      font-size: 16px;
+    }
+
+    .unit p, .unit li {
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.42;
+    }
+
+    .unit p {
+      margin: 0;
+    }
+
+    .unit ul {
+      margin: 0;
+      padding-left: 18px;
+    }
+
+    .pipeline {
+      display: grid;
+      grid-template-columns: 1fr 40px 1fr 40px 1fr 40px 1fr;
+      align-items: stretch;
+      gap: 0;
+    }
+
+    .stage {
+      background: var(--panel);
+      border: 2px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+      min-height: 142px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .stage strong {
+      display: block;
+      font-size: 17px;
+      margin-bottom: 8px;
+    }
+
+    .stage span {
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.4;
+    }
+
+    .arrow {
+      display: grid;
+      place-items: center;
+      color: var(--teal);
+      font-size: 30px;
+      font-weight: 800;
+    }
+
+    .edge { border-color: var(--teal); }
+    .server { border-color: var(--blue); }
+    .tactic { border-color: var(--amber); }
+    .output { border-color: var(--green); }
+
+    .timeline {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .step {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-top: 5px solid var(--blue);
+      border-radius: 8px;
+      padding: 12px;
+      min-height: 164px;
+    }
+
+    .step .num {
+      color: var(--blue);
+      font-weight: 800;
+      font-size: 13px;
+      margin-bottom: 8px;
+    }
+
+    .step h3 {
+      margin: 0 0 8px;
+      font-size: 15px;
+      line-height: 1.25;
+    }
+
+    code {
+      display: block;
+      background: #111827;
+      color: #f8fafc;
+      border-radius: 6px;
+      padding: 8px;
+      font-size: 12px;
+      line-height: 1.35;
+      overflow-wrap: anywhere;
+      white-space: normal;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 11px 12px;
+      text-align: left;
+      font-size: 14px;
+      vertical-align: top;
+    }
+
+    th {
+      background: #e9eeec;
+      font-size: 13px;
+      color: #334155;
+    }
+
+    tr:last-child td { border-bottom: 0; }
+
+    .badge {
+      display: inline-block;
+      border-radius: 999px;
+      padding: 3px 8px;
+      font-size: 12px;
+      font-weight: 700;
+      color: white;
+    }
+
+    .b-teal { background: var(--teal); }
+    .b-blue { background: var(--blue); }
+    .b-amber { background: var(--amber); }
+    .b-red { background: var(--red); }
+    .b-green { background: var(--green); }
+
+    .print-note {
+      color: var(--muted);
+      font-size: 13px;
+      margin-top: 18px;
+    }
+
+    @media (max-width: 980px) {
+      header, .grid-2, .grid-3 { grid-template-columns: 1fr; }
+      .pipeline { grid-template-columns: 1fr; gap: 10px; }
+      .arrow { transform: rotate(90deg); min-height: 28px; }
+      .timeline { grid-template-columns: 1fr 1fr; }
+    }
+
+    @media print {
+      body { background: white; }
+      main { max-width: none; padding: 12mm; }
+      .unit, .stage, .step, table { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>Track A Field Test Board</h1>
+        <p class="subtitle">Presentation-aligned HADO Smart Court IoT test plan for single-camera tracking, bird-eye tactical guidance, and pose-based action demo.</p>
+      </div>
+      <div class="guardrail">
+        <strong>Scope guard:</strong> Track A only. Do not mix Roboflow relabeling, AR effect occlusion, player-only retraining, or Track B research outputs into tomorrow's test.
+      </div>
+    </header>
+
+    <section>
+      <h2>1. Presentation Architecture</h2>
+      <div class="pipeline">
+        <div class="stage edge">
+          <strong>Fixed Camera</strong>
+          <span>One court-facing camera captures live HADO movement.</span>
+          <span class="badge b-teal">single camera</span>
+        </div>
+        <div class="arrow">→</div>
+        <div class="stage edge">
+          <strong>Raspberry Pi 4</strong>
+          <span>YOLOv8n-pose extracts player boxes and 17 keypoints. NCNN is the preferred field model.</span>
+          <span class="badge b-teal">edge inference</span>
+        </div>
+        <div class="arrow">→</div>
+        <div class="stage server">
+          <strong>Tracking + Homography</strong>
+          <span>IoU tracker keeps player IDs. Foot points are transformed from pixels to court meters.</span>
+          <span class="badge b-blue">bird-eye coordinates</span>
+        </div>
+        <div class="arrow">→</div>
+        <div class="stage tactic">
+          <strong>Tactical + Action Layer</strong>
+          <span>Rule engine creates explainable guidance. Pose keypoints drive 7 HADO action labels.</span>
+          <span class="badge b-amber">demo output</span>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>2. Three Demo Levels</h2>
+      <div class="grid-3">
+        <div class="unit">
+          <h3><span class="badge b-blue">Level 1</span> Tracking</h3>
+          <ul>
+            <li>YOLOv8n-pose player detection</li>
+            <li>bbox bottom-center foot point</li>
+            <li>IoU player ID tracking</li>
+            <li>court meter coordinates</li>
+          </ul>
+        </div>
+        <div class="unit">
+          <h3><span class="badge b-amber">Level 2</span> Tactical Engine</h3>
+          <ul>
+            <li>rule-based advice</li>
+            <li>MID/HIGH urgency visual output</li>
+            <li>optional offline voice guide</li>
+            <li>presentation demo recording</li>
+          </ul>
+        </div>
+        <div class="unit">
+          <h3><span class="badge b-green">Level 3</span> Action Demo</h3>
+          <ul>
+            <li>skeleton overlay</li>
+            <li>charge, shoot, shield</li>
+            <li>dodge left/right, crouch, ready</li>
+            <li>prototype confidence panel</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>3. Tomorrow Run Timeline</h2>
+      <div class="timeline">
+        <div class="step">
+          <div class="num">00</div>
+          <h3>Preflight</h3>
+          <code>./run.sh preflight</code>
+          <p>Check deps, camera, model, RAM, TTS, calibration.</p>
+        </div>
+        <div class="step">
+          <div class="num">01</div>
+          <h3>Calibrate</h3>
+          <code>./run.sh calibrate</code>
+          <p>Click 4 court points. Record mean round-trip error.</p>
+        </div>
+        <div class="step">
+          <div class="num">02</div>
+          <h3>Level 2 Live</h3>
+          <code>./run.sh main --level 2 --voice</code>
+          <p>Confirm boxes, IDs, bird-eye dots, rules, and optional voice.</p>
+        </div>
+        <div class="step">
+          <div class="num">03</div>
+          <h3>Record Tactical Demo</h3>
+          <code>./run.sh main --level 2 --voice --headless --record data/field_demo.mp4 --max-frames 2700</code>
+          <p>Save the presentation-level field demo.</p>
+        </div>
+        <div class="step">
+          <div class="num">04</div>
+          <h3>Pose Demo</h3>
+          <code>./run.sh pose_live --out data/field_pose.mp4</code>
+          <p>Capture skeleton plus bird-eye proof.</p>
+        </div>
+        <div class="step">
+          <div class="num">05</div>
+          <h3>Action Demo</h3>
+          <code>./run.sh action --threaded --record data/action_demo_field.mp4 --max-frames 1800</code>
+          <p>Test 7 actions slowly, one player at a time.</p>
+        </div>
+        <div class="step">
+          <div class="num">06</div>
+          <h3>Measure</h3>
+          <code>./run.sh w5_measure</code>
+          <p>Generate FPS/RAM/temp/TTS report.</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>4. Evidence To Collect</h2>
+      <div class="grid-2">
+        <table>
+          <thead>
+            <tr><th>Metric</th><th>Target</th><th>Where It Goes</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>NCNN average FPS</td><td>&ge; 15 fps</td><td>Script Slide 4, QA Q5</td></tr>
+            <tr><td>ONNX average FPS</td><td>&ge; 6 fps</td><td>QA Q5 comparison</td></tr>
+            <tr><td>Calibration error</td><td>&lt; 50 mm</td><td>QA Q6</td></tr>
+            <tr><td>Position RMS error</td><td>&lt; 10 cm</td><td>Script Slide 8, QA Q6</td></tr>
+            <tr><td>CPU temperature</td><td>&lt; 70 C</td><td>QA Q9</td></tr>
+            <tr><td>Recorded demo files</td><td>3 files</td><td>presentation backup</td></tr>
+          </tbody>
+        </table>
+        <table>
+          <thead>
+            <tr><th>Failure</th><th>Field Response</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Camera not found</td><td>Check device index and retry with <code>--source 1</code></td></tr>
+            <tr><td>No GUI</td><td>Use headless recording command</td></tr>
+            <tr><td>TTS fails</td><td>Remove <code>--voice</code> and keep visual demo</td></tr>
+            <tr><td>Low FPS</td><td>Confirm NCNN model and close background processes</td></tr>
+            <tr><td>Bad calibration</td><td>Re-click 4 points after fixing camera position</td></tr>
+            <tr><td>Action confusion</td><td>Use slow, isolated single-player movements</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <h2>5. One-Sentence Alignment Check</h2>
+      <div class="unit">
+        <p>Track A is still exactly the presentation project: one fixed camera, Pi4-oriented YOLOv8n-pose inference, IoU tracking, homography bird-eye coordinates, rule-based tactical guidance, and a prototype 7-action skeleton demo. Track B remains separate.</p>
+      </div>
+      <p class="print-note">Recommended use: open this HTML in the browser before the field test or print to PDF as a one-page visual checklist.</p>
+    </section>
+  </main>
+</body>
+</html>

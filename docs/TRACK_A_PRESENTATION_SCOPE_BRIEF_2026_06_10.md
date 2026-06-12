@@ -122,6 +122,8 @@ Claude Code에게 넘겨도 되는 구현 범위를 정리한 Track A 전용 브
 - `src/camera.py`
 - `HADO_iot/pi/export_ncnn.py`
 - `docs/W5_PI4_QUICKRUN.md`
+- `docs/TRACK_A_FIELD_TEST_PACKET_2026_06_13.md`
+- `docs/TRACK_A_FIELD_TEST_VISUAL_2026_06_13.html`
 
 ## 3. Claude Code에게 넘기면 안 되는 범위
 
