@@ -254,6 +254,7 @@ Rules:
 
 ## 11. 관련 문서
 
+- [TRACK_B_CURRENT_ACTION_PACKET_2026_06_13.md](/Users/jinu/iot project/hado-smart-court-iot/docs/TRACK_B_CURRENT_ACTION_PACKET_2026_06_13.md)
 - [TRACK_B_OPERATOR_PLAYBOOK_2026_06_10.md](/Users/jinu/iot project/hado-smart-court-iot/docs/TRACK_B_OPERATOR_PLAYBOOK_2026_06_10.md)
 - [TRACK_B_HANDOFF_REPORT_2026_06_09.md](/Users/jinu/iot project/hado-smart-court-iot/docs/TRACK_B_HANDOFF_REPORT_2026_06_09.md)
 - [TRACK_B_TECHNICAL_REPORT_2026_06_09.md](/Users/jinu/iot project/hado-smart-court-iot/docs/TRACK_B_TECHNICAL_REPORT_2026_06_09.md)

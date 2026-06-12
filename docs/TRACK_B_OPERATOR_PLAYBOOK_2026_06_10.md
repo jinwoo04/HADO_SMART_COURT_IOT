@@ -27,8 +27,10 @@ Track A 발표용 내용은 여기서 완전히 제외한다.
   `outputs/track_b_retrain_runs/track_b_current_best_checkpoint.txt`
 - leaderboard:
   `outputs/track_b_retrain_runs/track_b_run_leaderboard.md`
+- latest action packet:
+  `docs/TRACK_B_CURRENT_ACTION_PACKET_2026_06_13.md`
 
-2026-06-10 기준 추천 run:
+2026-06-13 재확인 기준 추천 run:
 
 - `trackb_v4_player_only`
 
