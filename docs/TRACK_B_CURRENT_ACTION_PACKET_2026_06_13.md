@@ -302,6 +302,24 @@ data/track_b_pose_review/batch02_match07_v4_smoke/match07_pose_summary.json
 
 > skeleton/action verification은 도구 수준에서는 시작 가능하지만, v5 relabel 이후 player-only over-detection을 줄인 다음 다시 비교하는 것이 맞다.
 
+### pose review 요약 도구
+
+여러 pose review 폴더를 한 번에 비교하려면 아래를 실행한다.
+
+```bash
+./hado_venv/bin/python tools/summarize_track_b_pose_review.py
+```
+
+출력:
+
+```text
+data/track_b_pose_review/pose_review_summary.csv
+data/track_b_pose_review/pose_review_summary.md
+```
+
+이 요약은 v5/v6 이후 같은 영상 재평가 시,
+`Rows/Frame`, `track churn`, `avg confidence`, `Ready %`가 실제로 좋아졌는지 비교하는 기준표로 사용한다.
+
 ## 11. 다음 작업 순서
 
 현재 가장 자연스러운 순서:
