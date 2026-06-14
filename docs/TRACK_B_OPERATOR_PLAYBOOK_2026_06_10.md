@@ -178,6 +178,23 @@ Roboflow에 올리기 전에 contact sheet와 checklist를 만들면
   --bundle-make-zip
 ```
 
+같은 영상 batch의 이전 평가와 새 평가를 비교:
+
+```bash
+./hado_venv/bin/python tools/compare_track_b_batch_evals.py \
+  --eval-dir "data/track_b_batch_review/batch02_v4_eval" \
+  --eval-dir "data/track_b_batch_review/batch02_v5_eval" \
+  --baseline "batch02_v4_eval" \
+  --current "batch02_v5_eval"
+```
+
+핵심 성공 기준:
+
+- total hard frames 감소
+- severity score 감소
+- high_count/over-detection 감소
+- 특히 match08, match02 개선
+
 ## 8. OpenAI Batch로 frame QA를 붙이고 싶을 때
 
 이 단계는 필수가 아니라 선택사항이다.

@@ -217,6 +217,31 @@ v5가 좋아 보이면 같은 batch02를 다시 평가한다.
 - match08/match02 severity가 줄었는가
 - skip 후보 UI 장면이 줄었는가
 
+v4/v5 평가 폴더를 숫자로 비교하려면:
+
+```bash
+./hado_venv/bin/python tools/compare_track_b_batch_evals.py \
+  --eval-dir "data/track_b_batch_review/batch02_v4_eval" \
+  --eval-dir "data/track_b_batch_review/batch02_v5_eval" \
+  --baseline "batch02_v4_eval" \
+  --current "batch02_v5_eval"
+```
+
+출력:
+
+```text
+outputs/track_b_eval_comparison/batch_eval_comparison.md
+outputs/track_b_eval_comparison/batch_eval_comparison.csv
+outputs/track_b_eval_comparison/batch_eval_match_deltas.csv
+```
+
+성공 신호:
+
+- `severity_score` 감소
+- `overdetect_frames` 감소
+- match08/match02 severity delta가 음수
+- mAP가 좋아졌더라도 over-detection severity가 증가하면 Track B 관점에서는 실패
+
 ## 9. skeleton phase로 넘어가는 조건
 
 바로 skeleton/action으로 넘어가도 되지만,
