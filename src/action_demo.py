@@ -31,8 +31,8 @@ import numpy as np
 from src.camera import Camera
 from src.detector import PersonDetector
 from src.pose import (
-    ACTION_COLOR, ACTION_EMOJI, ACTION_KO, ActionResult,
-    classify_hado_action, draw_skeleton,
+    ACTION_COLOR, ACTION_EMOJI, ACTION_KO, ActionResult, NextActionRec,
+    classify_hado_action, draw_keypoint_ids, draw_skeleton, recommend_next_action,
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -42,6 +42,7 @@ _SMOOTH_N   = 6       # 최근 N 프레임 중 최다 동작을 확정 레이블
 _FONT_SCALE = 1.8     # 대형 동작 레이블 폰트 크기
 _BAR_H      = 8       # 점수 막대 높이
 _HISTORY_N  = 30      # 히스토리 패널에 표시할 프레임 수
+_PANEL_H    = 130     # 하단 패널 높이 (현재 동작 + 다음 추천)
 
 
 # ── 헬퍼 ──────────────────────────────────────────────────────────────────────
@@ -68,36 +69,52 @@ def _draw_action_panel(
     result: ActionResult,
     smoothed: str,
     fps: float,
+    recs: "list[NextActionRec] | None" = None,
 ) -> None:
-    """하단 동작 레이블 패널 (전체 너비)."""
+    """하단 패널: 현재 동작 + 신뢰도 + 다음 동작 추천."""
     h, w = img.shape[:2]
-    panel_h = 90
-    y0 = h - panel_h
+    y0 = h - _PANEL_H
 
-    # 패널 배경
     overlay = img.copy()
     cv2.rectangle(overlay, (0, y0), (w, h), (15, 15, 15), -1)
-    cv2.addWeighted(overlay, 0.75, img, 0.25, 0, img)
+    cv2.addWeighted(overlay, 0.78, img, 0.22, 0, img)
 
     color = ACTION_COLOR.get(smoothed, (180, 180, 180))
     emoji = ACTION_EMOJI.get(smoothed, "?")
     label = ACTION_KO.get(smoothed, smoothed)
     conf  = result.confidence
 
-    # 동작 레이블 (대형)
-    _put_kr(img, f"{emoji}  {label}", (20, y0 + 14), 28, color)
+    # 현재 동작 레이블
+    _put_kr(img, f"{emoji}  {label}", (20, y0 + 12), 28, color)
 
     # 신뢰도 바
     bar_w = max(0, int((w - 200) * min(1.0, conf)))
-    bar_y = y0 + 56
+    bar_y = y0 + 50
     cv2.rectangle(img, (20, bar_y), (w - 180, bar_y + _BAR_H), (50, 50, 50), -1)
     cv2.rectangle(img, (20, bar_y), (20 + bar_w, bar_y + _BAR_H), color, -1)
     cv2.putText(img, f"{conf:.0%}", (w - 170, bar_y + _BAR_H),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.55, color, 1, cv2.LINE_AA)
 
     # FPS
-    cv2.putText(img, f"FPS {fps:.1f}", (w - 110, y0 + 20),
+    cv2.putText(img, f"FPS {fps:.1f}", (w - 110, y0 + 18),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, (130, 130, 130), 1, cv2.LINE_AA)
+
+    # 구분선
+    sep_y = y0 + 68
+    cv2.line(img, (20, sep_y), (w - 20, sep_y), (55, 55, 55), 1)
+
+    # 다음 동작 추천
+    _put_kr(img, "다음 추천", (20, sep_y + 6), 11, (120, 120, 120))
+    if recs:
+        for i, rec in enumerate(recs):
+            rec_color = ACTION_COLOR.get(rec.action, (180, 180, 180))
+            rec_emoji = ACTION_EMOJI.get(rec.action, "?")
+            rec_label = ACTION_KO.get(rec.action, rec.action)
+            ry = sep_y + 6 + i * 28
+            _put_kr(img, f"{rec_emoji} {rec_label}", (110, ry), 17, rec_color)
+            _put_kr(img, rec.reason, (110 + 130, ry + 2), 11, (100, 100, 100))
+    else:
+        _put_kr(img, "—", (110, sep_y + 6), 13, (70, 70, 70))
 
 
 def _draw_score_bars(
@@ -189,7 +206,7 @@ def run(args) -> int:
 
     if not args.headless:
         cv2.namedWindow("HADO Action Demo", cv2.WINDOW_NORMAL)
-        cv2.resizeWindow("HADO Action Demo", args.width, args.height + 90)
+        cv2.resizeWindow("HADO Action Demo", args.width, args.height)
 
     smooth_buf: collections.deque[str] = collections.deque(maxlen=_SMOOTH_N)
     history:    collections.deque[str] = collections.deque(maxlen=_HISTORY_N)
@@ -199,6 +216,7 @@ def run(args) -> int:
     last_t      = time.time()
     frame_idx   = 0
     last_result: ActionResult | None = None
+    last_recs: "list[NextActionRec]" = []
 
     print("[ActionDemo] 실행 — 카메라 앞에서 동작을 취하세요. ESC로 종료.")
 
@@ -214,6 +232,8 @@ def run(args) -> int:
 
             if target is not None:
                 draw_skeleton(frame, target)
+                if args.show_kp_ids:
+                    draw_keypoint_ids(frame, target)
                 result = classify_hado_action(target, frame_center_x=args.width / 2)
                 if result is not None:
                     last_result = result
@@ -221,12 +241,13 @@ def run(args) -> int:
                     # 최근 N프레임 최다 동작 확정
                     smoothed = max(set(smooth_buf), key=list(smooth_buf).count)
                     history.append(smoothed)
+                    last_recs = recommend_next_action(smoothed, list(history))
 
             # ── HUD 렌더링 ────────────────────────────────────────
             _draw_history(frame, history)
             if last_result is not None:
                 _draw_score_bars(frame, last_result.scores)
-                _draw_action_panel(frame, last_result, smoothed, fps)
+                _draw_action_panel(frame, last_result, smoothed, fps, last_recs)
             else:
                 # 아무도 감지 안 된 경우
                 h, w = frame.shape[:2]
@@ -292,7 +313,9 @@ def main() -> None:
                         help="최대 프레임 수 (0=무제한)")
     parser.add_argument("--headless",   action="store_true")
     parser.add_argument("--threaded",   action="store_true", help="스레드 캡처 (Pi4 FPS 향상)")
-    parser.add_argument("--onnx",       action="store_true", help="NCNN 대신 ONNX 강제 사용")
+    parser.add_argument("--onnx",        action="store_true", help="NCNN 대신 ONNX 강제 사용")
+    parser.add_argument("--show-kp-ids", action="store_true", dest="show_kp_ids",
+                        help="키포인트 인덱스(0–16) 표시 (발표용)")
     raise SystemExit(run(parser.parse_args()))
 
 

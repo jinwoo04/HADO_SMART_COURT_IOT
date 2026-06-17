@@ -79,7 +79,8 @@ class TestFormatReport:
     def test_tts_na_when_negative(self):
         from src.measure_w5 import _format_report
         r = _format_report([], -1.0, "2026-06-15 09:00")
-        assert "pyttsx3 없음" in r
+        # TTS -1은 pyttsx3 없음 또는 Mac 환경(비동기 반환) 두 경우 모두 처리
+        assert ("pyttsx3 없음" in r or "TTS 측정 건너뜀" in r or "측정 실패" in r)
 
     def test_contains_position_error_table(self):
         from src.measure_w5 import _format_report

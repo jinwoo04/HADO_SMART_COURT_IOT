@@ -67,9 +67,17 @@ Without NCNN (ONNX only), the same pipeline runs at around **5–7 fps** — bel
 
 With the Hailo-8L AI Kit at imgsz=640, theoretical throughput reaches **30+ fps** based on Hailo's YOLOv8n benchmark.
 
-*(W5 on-court note: measure exact fps with `./run.sh bench --frames 200 --imgsz 320 --model yolov8n-pose_ncnn_model` and fill in actual numbers.)*
+*(W5 pre-validation on Mac — 2026-06-17, imgsz=320, 200 frames, external camera 1280×720:)*
 
-(If asked why 15 fps: below 10 fps, trajectories look stuttery and the voice prompt feels disconnected from the in-game action.)
+| Model | Inference FPS | Wall FPS | Peak RAM |
+|-------|--------------|---------|----------|
+| NCNN  | 98.5 fps | 29.3 fps | 396 MB |
+| ONNX  | 72.9 fps | 29.1 fps | 586 MB |
+| PT    | 97.8 fps | 30.0 fps | 567 MB |
+
+*Wall FPS is camera-limited (30 fps cap). Pi4 numbers → [TODO: fill from `./run.sh w5_measure` on Pi4].*
+
+*(If asked why 15 fps: below 10 fps, trajectories look stuttery and the voice prompt feels disconnected from the in-game action.)*
 
 ---
 

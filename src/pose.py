@@ -121,6 +121,34 @@ class ActionResult:
     scores: "dict[str, float]"  # 각 동작별 원시 점수
 
 
+@_dc
+class NextActionRec:
+    """다음 동작 추천 항목."""
+    action: str       # ACTION_KO 키
+    reason: str       # 화면 표시용 한글 설명
+    priority: float   # 0.0~1.0 (높을수록 강하게 추천)
+
+
+# 현재 동작 → 다음 동작 전환 추천 테이블 (HADO 전술 기반)
+NEXT_ACTION_RECS: dict[str, list[tuple[str, str, float]]] = {
+    "charge":  [("shoot",   "차지 완료 → 발사",        1.0),
+                ("dodge_l", "발사 포기 → 좌측 회피",   0.3)],
+    "shoot":   [("dodge_r", "발사 후 우측 회피",        0.8),
+                ("dodge_l", "발사 후 좌측 회피",        0.7),
+                ("shield",  "발사 후 방어 준비",         0.4)],
+    "shield":  [("charge",  "방어 해제 → 역공 차지",    0.9),
+                ("dodge_l", "방어 중 측면 이동",         0.4)],
+    "dodge_l": [("charge",  "회피 후 역공 차지",        0.8),
+                ("shield",  "이동 후 방어 자세",         0.4)],
+    "dodge_r": [("charge",  "회피 후 역공 차지",        0.8),
+                ("shield",  "이동 후 방어 자세",         0.4)],
+    "crouch":  [("charge",  "일어나서 차지 시작",        0.7),
+                ("ready",   "자세 회복",                 0.4)],
+    "ready":   [("charge",  "차지 시작",                 0.7),
+                ("shield",  "방어 자세 취하기",          0.5)],
+}
+
+
 def classify_hado_action(
     det: "Detection",
     frame_center_x: float = 320.0,
@@ -246,6 +274,29 @@ def classify_hado_action(
         action, conf = "ready", 1.0 - max(crouch, charge, shoot, shield, dodge_l, dodge_r)
 
     return ActionResult(action=action, confidence=round(conf, 3), scores=scores)
+
+
+def recommend_next_action(
+    current_action: str,
+    history: "list[str] | None" = None,
+) -> "list[NextActionRec]":
+    """현재 동작 + 최근 히스토리 → 다음 동작 추천 (우선순위 내림차순, 최대 2개).
+
+    Parameters
+    ----------
+    current_action : 현재 확정된 동작 레이블 (ACTION_KO 키)
+    history        : 최근 N프레임 동작 레이블 리스트 (오래된 것 먼저)
+    """
+    base = NEXT_ACTION_RECS.get(current_action, [])
+    recs = [NextActionRec(action=a, reason=r, priority=p) for a, r, p in base]
+
+    # 같은 동작이 4프레임 이상 지속되면 전환 추천 가중치 +20%
+    if history and len(history) >= 4 and all(a == current_action for a in history[-4:]):
+        recs = [NextActionRec(action=r.action, reason=r.reason,
+                              priority=min(1.0, r.priority * 1.2)) for r in recs]
+
+    recs.sort(key=lambda r: r.priority, reverse=True)
+    return recs[:2]
 
 
 def sample_vest_hue(frame: "np.ndarray", det: "Detection") -> int:
@@ -417,6 +468,22 @@ def draw_skeleton(
         p = _kp(kpts, i)
         if p:
             cv2.circle(img, (int(p[0]), int(p[1])), 3, (255, 255, 255), -1, cv2.LINE_AA)
+
+
+def draw_keypoint_ids(
+    img: np.ndarray,
+    det: Detection,
+    conf_min: float = 0.25,
+) -> None:
+    """스켈레톤 위에 키포인트 인덱스(0–16) 표시 (발표·디버그용)."""
+    if det.keypoints is None:
+        return
+    kpts = det.keypoints
+    for i in range(17):
+        if kpts[i, 2] >= conf_min:
+            x, y = int(kpts[i, 0]), int(kpts[i, 1])
+            cv2.putText(img, str(i), (x + 4, y - 3),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.35, (255, 255, 0), 1, cv2.LINE_AA)
 
 
 def draw_posture_label(

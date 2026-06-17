@@ -13,9 +13,19 @@ data/w5_measurements.md 에 저장한다.
 from __future__ import annotations
 
 import argparse
+import platform
 import time
 from datetime import datetime
 from pathlib import Path
+
+
+def _is_pi4() -> bool:
+    """Raspberry Pi 4 여부 확인."""
+    try:
+        model = Path("/proc/device-tree/model").read_text()
+        return "Raspberry Pi 4" in model
+    except OSError:
+        return False
 
 # PROJECT_ROOT = src 상위 디렉터리
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -49,6 +59,11 @@ def _measure_tts_latency(n: int = 5) -> float:
         print("[W5] pyttsx3 없음 — TTS 측정 건너뜀")
         return -1.0
 
+    if not _is_pi4() and platform.system() == "Darwin":
+        print("[W5] ⚠ Mac 감지 — macOS NSSpeech는 runAndWait()가 즉시 반환하므로 TTS 지연 측정 건너뜀.")
+        print("[W5]    Pi4(espeak-ng)에서 실측 필요.")
+        return -1.0
+
     try:
         engine = pyttsx3.init()
         # 한국어 보이스 선택
@@ -77,10 +92,15 @@ def _measure_tts_latency(n: int = 5) -> float:
 # ─────────────────────────────────────────────────────────
 
 def _format_report(results: list[dict], tts_ms: float, measured_at: str) -> str:
+    is_pi = _is_pi4()
+    platform_label = "Pi4 실측" if is_pi else f"참고값 ({platform.node()}, {platform.system()})"
+
     lines: list[str] = []
-    lines.append(f"# W5 Pi4 실측 결과\n")
+    lines.append(f"# W5 실측 결과 — {platform_label}\n")
     lines.append(f"**측정일**: {measured_at}  \n")
     lines.append(f"**목표**: FPS ≥15, RAM <1.5 GB, CPU <70°C, 위치오차 <10 cm\n")
+    if not is_pi:
+        lines.append(f"> ⚠️ Pi4가 아닌 환경에서 측정된 참고값입니다. 최종 보고서에는 Pi4 실측값을 사용하세요.\n")
     lines.append("")
     lines.append("## 추론 FPS / RAM / CPU 온도\n")
     lines.append("| 모델 | 평균 FPS | Wall FPS | P95 지연(ms) | 피크 RAM(MB) | 최고 온도(°C) |")
@@ -102,6 +122,8 @@ def _format_report(results: list[dict], tts_ms: float, measured_at: str) -> str:
         lines.append(f"| 지표 | 값 | 목표 |")
         lines.append(f"|------|-----|------|")
         lines.append(f"| 한국어 TTS 중앙값 지연 | {tts_ms:.0f} ms | <500 ms {flag} |")
+    elif not is_pi:
+        lines.append("*Mac 환경: TTS 측정 건너뜀 (Pi4/espeak-ng에서 측정 필요)*\n")
     else:
         lines.append("*pyttsx3 없음 또는 측정 실패*\n")
 
@@ -150,8 +172,13 @@ def main():
         print("[W5] 경고: pose 모델 없음. 'yolov8n-pose.pt' 를 기본으로 사용합니다.")
         available = {"PT": "yolov8n-pose.pt"}
 
+    is_pi = _is_pi4()
+    env_label = "Raspberry Pi 4" if is_pi else f"{platform.system()} ({platform.node()})"
     print(f"\n{'='*60}")
-    print(f" W5 Pi4 실측 — {args.frames} 프레임")
+    print(f" W5 실측 — {args.frames} 프레임")
+    print(f" 실행 환경: {env_label}")
+    if not is_pi:
+        print(f" ⚠ Pi4 아님 — FPS/온도는 참고값. TTS는 Pi4에서 재측정 필요.")
     print(f" 발견된 모델: {list(available.keys())}")
     print(f"{'='*60}\n")
 

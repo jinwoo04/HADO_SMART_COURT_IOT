@@ -6,8 +6,9 @@ import pytest
 
 from src.detector import Detection
 from src.pose import (
-    ACTION_KO, ActionResult,
-    classify_hado_action, draw_skeleton, sample_vest_hue,
+    ACTION_KO, ActionResult, NextActionRec,
+    classify_hado_action, draw_keypoint_ids, draw_skeleton,
+    recommend_next_action, sample_vest_hue,
 )
 
 _W, _H = 100.0, 200.0   # 가상 바운딩 박스 (왼쪽 팀 → frame_center_x=320 기준 팀A)
@@ -266,6 +267,92 @@ class TestSampleVestHue:
         assert result != -1, "빨간 조끼에서 hue 추출 실패"
         # red hue is near 0 (wraps 0/180), check it's in red range
         assert result <= 15 or result >= 165, f"예상 red hue(0~15 or 165~179), got {result}"
+
+
+class TestRecommendNextAction:
+
+    def test_returns_list_of_next_action_rec(self):
+        recs = recommend_next_action("charge")
+        assert isinstance(recs, list)
+        assert all(isinstance(r, NextActionRec) for r in recs)
+
+    def test_charge_recommends_shoot_first(self):
+        recs = recommend_next_action("charge")
+        assert len(recs) >= 1
+        assert recs[0].action == "shoot", f"charge 후 shoot이 1순위여야 함: {recs}"
+
+    def test_shoot_recommends_dodge(self):
+        recs = recommend_next_action("shoot")
+        actions = [r.action for r in recs]
+        assert "dodge_r" in actions or "dodge_l" in actions
+
+    def test_shield_recommends_charge(self):
+        recs = recommend_next_action("shield")
+        assert len(recs) >= 1
+        assert recs[0].action == "charge"
+
+    def test_dodge_l_recommends_charge(self):
+        recs = recommend_next_action("dodge_l")
+        assert recs[0].action == "charge"
+
+    def test_dodge_r_recommends_charge(self):
+        recs = recommend_next_action("dodge_r")
+        assert recs[0].action == "charge"
+
+    def test_unknown_action_returns_empty(self):
+        recs = recommend_next_action("nonexistent_action")
+        assert recs == []
+
+    def test_max_two_recommendations(self):
+        for action in ACTION_KO:
+            recs = recommend_next_action(action)
+            assert len(recs) <= 2, f"{action}에서 추천이 2개 초과"
+
+    def test_priority_descending(self):
+        recs = recommend_next_action("shoot")
+        priorities = [r.priority for r in recs]
+        assert priorities == sorted(priorities, reverse=True)
+
+    def test_history_boosts_priority(self):
+        """같은 동작 4프레임 이상 지속 시 전환 추천 가중치 증가."""
+        recs_no_history = recommend_next_action("ready", history=None)
+        recs_with_history = recommend_next_action("ready", history=["ready"] * 6)
+        if recs_no_history and recs_with_history:
+            assert recs_with_history[0].priority >= recs_no_history[0].priority
+
+    def test_each_rec_has_reason(self):
+        for action in ACTION_KO:
+            for rec in recommend_next_action(action):
+                assert rec.reason, f"{action} 추천에 reason이 비어있음"
+
+    def test_rec_action_is_valid(self):
+        for action in ACTION_KO:
+            for rec in recommend_next_action(action):
+                assert rec.action in ACTION_KO, f"추천 동작 {rec.action}이 ACTION_KO에 없음"
+
+
+class TestDrawKeypointIds:
+
+    def test_no_crash_with_valid_keypoints(self):
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        kpts = _make_kpts({
+            _LS: (200.0, 150.0), _RS: (280.0, 150.0),
+            _LH: (210.0, 270.0), _RH: (270.0, 270.0),
+        })
+        det = _det(kpts, x1=150, x2=330)
+        draw_keypoint_ids(frame, det)  # 크래시 없어야 함
+
+    def test_no_crash_with_none_keypoints(self):
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        det = Detection(x1=0, y1=0, x2=100, y2=200, confidence=0.9, keypoints=None)
+        draw_keypoint_ids(frame, det)  # 크래시 없어야 함
+
+    def test_pixels_change(self):
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        kpts = _make_kpts({_LS: (200.0, 150.0), _RS: (280.0, 150.0)})
+        det = _det(kpts, x1=150, x2=330)
+        draw_keypoint_ids(frame, det)
+        assert frame.max() > 0
 
 
 class TestDrawSkeleton:
