@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Track B Progress Dashboard</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f7fb;
+      --panel: #ffffff;
+      --panel-soft: #eef2ff;
+      --ink: #182033;
+      --muted: #5d6885;
+      --line: #d7deee;
+      --accent: #4f46e5;
+      --accent-soft: #c7d2fe;
+      --green: #0f9d6c;
+      --amber: #d97706;
+      --red: #d14343;
+      --blue: #2563eb;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      line-height: 1.5;
+    }
+
+    .wrap {
+      width: min(1280px, calc(100vw - 32px));
+      margin: 24px auto 48px;
+    }
+
+    .hero {
+      background: linear-gradient(135deg, #1e1b4b 0%, #312e81 52%, #4f46e5 100%);
+      color: #fff;
+      border-radius: 16px;
+      padding: 28px;
+      box-shadow: 0 18px 40px rgba(49, 46, 129, 0.22);
+    }
+
+    .hero h1 {
+      margin: 0 0 8px;
+      font-size: 34px;
+      font-weight: 750;
+    }
+
+    .hero p {
+      margin: 0;
+      max-width: 900px;
+      color: rgba(255, 255, 255, 0.88);
+      font-size: 16px;
+    }
+
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 18px;
+    }
+
+    .meta span {
+      background: rgba(255, 255, 255, 0.12);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      padding: 8px 12px;
+      border-radius: 999px;
+      font-size: 13px;
+    }
+
+    .section {
+      margin-top: 22px;
+    }
+
+    .section h2 {
+      margin: 0 0 12px;
+      font-size: 20px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(12, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 18px;
+      box-shadow: 0 10px 22px rgba(24, 32, 51, 0.05);
+    }
+
+    .span-3 { grid-column: span 3; }
+    .span-4 { grid-column: span 4; }
+    .span-5 { grid-column: span 5; }
+    .span-6 { grid-column: span 6; }
+    .span-7 { grid-column: span 7; }
+    .span-8 { grid-column: span 8; }
+    .span-12 { grid-column: span 12; }
+
+    .metric-label {
+      color: var(--muted);
+      font-size: 13px;
+      margin-bottom: 8px;
+    }
+
+    .metric-value {
+      font-size: 32px;
+      font-weight: 760;
+      line-height: 1.1;
+    }
+
+    .metric-note {
+      color: var(--muted);
+      font-size: 13px;
+      margin-top: 8px;
+    }
+
+    .pill {
+      display: inline-block;
+      font-size: 12px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: var(--panel-soft);
+      color: var(--accent);
+      font-weight: 650;
+    }
+
+    .stepper {
+      display: grid;
+      gap: 12px;
+    }
+
+    .step {
+      display: grid;
+      grid-template-columns: 38px 1fr;
+      gap: 12px;
+      align-items: start;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fbfcff;
+    }
+
+    .dot {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      font-weight: 700;
+      font-size: 14px;
+    }
+
+    .done { background: rgba(15, 157, 108, 0.12); color: var(--green); }
+    .active { background: rgba(217, 119, 6, 0.12); color: var(--amber); }
+    .todo { background: rgba(79, 70, 229, 0.12); color: var(--accent); }
+
+    .step h3 {
+      margin: 0 0 4px;
+      font-size: 15px;
+    }
+
+    .step p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .flow {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .flow-box {
+      flex: 1 1 160px;
+      min-height: 92px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fbfcff;
+    }
+
+    .flow-box strong {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 14px;
+    }
+
+    .flow-box span {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .arrow {
+      color: var(--accent);
+      font-weight: 800;
+      font-size: 22px;
+      padding: 0 2px;
+    }
+
+    .bar-group {
+      display: grid;
+      gap: 14px;
+    }
+
+    .bar-row {
+      display: grid;
+      grid-template-columns: 90px 1fr 64px;
+      gap: 10px;
+      align-items: center;
+      font-size: 13px;
+    }
+
+    .bar-track {
+      height: 12px;
+      border-radius: 999px;
+      background: #e8ecf8;
+      overflow: hidden;
+    }
+
+    .bar-fill {
+      height: 100%;
+      border-radius: 999px;
+      background: linear-gradient(90deg, var(--accent), var(--blue));
+    }
+
+    .bar-fill.green {
+      background: linear-gradient(90deg, #0f9d6c, #22c55e);
+    }
+
+    .bar-fill.orange {
+      background: linear-gradient(90deg, #d97706, #f59e0b);
+    }
+
+    .table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    .table th,
+    .table td {
+      padding: 10px 8px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    .table th {
+      color: var(--muted);
+      font-weight: 650;
+      font-size: 12px;
+    }
+
+    .table tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .callout {
+      padding: 14px;
+      border-radius: 12px;
+      background: #fff8eb;
+      border: 1px solid #f3d7a5;
+      color: #7a4b00;
+      font-size: 13px;
+    }
+
+    .list {
+      margin: 0;
+      padding-left: 18px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .list li + li {
+      margin-top: 6px;
+    }
+
+    .footer-note {
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 16px;
+    }
+
+    @media (max-width: 980px) {
+      .span-3, .span-4, .span-5, .span-6, .span-7, .span-8 {
+        grid-column: span 12;
+      }
+
+      .bar-row {
+        grid-template-columns: 74px 1fr 56px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="hero">
+      <h1>Track B Progress Dashboard</h1>
+      <p>HADO AR/effect occlusion 연구의 현재 진행 상황을 한 화면에서 확인할 수 있도록 정리한 대시보드입니다. 핵심은 모델 자체보다, 실제 경기 hard frame을 다시 relabeling과 retraining 루프로 연결하는 데이터 파이프라인을 완성해둔 상태라는 점입니다.</p>
+      <div class="meta">
+        <span>Track B only</span>
+        <span>Updated: 2026-06-09</span>
+        <span>Current focus: player-only V5 stabilization</span>
+        <span>Validated commit: 7be3608</span>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>한눈에 보는 현재 상태</h2>
+      <div class="grid">
+        <div class="card span-3">
+          <div class="metric-label">기준선 모델</div>
+          <div class="metric-value">YOLOv8n</div>
+          <div class="metric-note">Roboflow V4 export를 player-only로 정규화한 baseline</div>
+        </div>
+        <div class="card span-3">
+          <div class="metric-label">수집한 경기 영상</div>
+          <div class="metric-value">10</div>
+          <div class="metric-note">Google Drive batch01 intake 완료</div>
+        </div>
+        <div class="card span-3">
+          <div class="metric-label">추출된 hard frame</div>
+          <div class="metric-value">175</div>
+          <div class="metric-note">실제 경기영상에서 suspicious frame 선별 완료</div>
+        </div>
+        <div class="card span-3">
+          <div class="metric-label">다음 relabel 대상</div>
+          <div class="metric-value">36 / 90</div>
+          <div class="metric-note">phase1 36장 우선, priority 90장 확장</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="grid">
+        <div class="card span-5">
+          <h2>진행 단계</h2>
+          <div class="stepper">
+            <div class="step">
+              <div class="dot done">01</div>
+              <div>
+                <h3>V4 baseline 정리 완료</h3>
+                <p>클래스 정규화 정책 `0 -> player`, `2 -> player`, `1 -> drop`를 확정하고 YOLOv8n baseline을 확보함.</p>
+              </div>
+            </div>
+            <div class="step">
+              <div class="dot done">02</div>
+              <div>
+                <h3>실제 경기 10개 intake 완료</h3>
+                <p>batch01 영상을 수집하고 sampled inference + hard frame mining + batch manifest 생성까지 마침.</p>
+              </div>
+            </div>
+            <div class="step">
+              <div class="dot done">03</div>
+              <div>
+                <h3>Roboflow 업로드 번들 준비 완료</h3>
+                <p>phase1 36장, priority 90장 업로드용 ZIP과 manifest를 생성함.</p>
+              </div>
+            </div>
+            <div class="step">
+              <div class="dot done">04</div>
+              <div>
+                <h3>재학습 자동화 루프 검증 완료</h3>
+                <p>`retrain_track_b_export.py`로 변환, 평가, hard mining, 1 epoch 학습 smoke까지 검증함.</p>
+              </div>
+            </div>
+            <div class="step">
+              <div class="dot active">05</div>
+              <div>
+                <h3>현재 대기 중인 핵심 작업</h3>
+                <p>Roboflow에서 phase1 relabeling 후 V5 export를 받아 실제 30 epoch 재학습으로 넘어가야 함.</p>
+              </div>
+            </div>
+            <div class="step">
+              <div class="dot todo">06</div>
+              <div>
+                <h3>다음 목표</h3>
+                <p>V4 대비 V5 성능 비교와 실제 경기 재평가를 통해 low-confidence와 low-count 장면 감소 여부를 확인.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card span-7">
+          <h2>Track B 파이프라인 흐름</h2>
+          <div class="flow">
+            <div class="flow-box">
+              <strong>1. Match videos</strong>
+              <span>`data/drive_imports/batch01`의 경기 영상 10개</span>
+            </div>
+            <div class="arrow">→</div>
+            <div class="flow-box">
+              <strong>2. Sampled inference</strong>
+              <span>`run_player_model_on_video.py`로 detection CSV 생성</span>
+            </div>
+            <div class="arrow">→</div>
+            <div class="flow-box">
+              <strong>3. Hard frame mining</strong>
+              <span>`mine_video_hard_frames.py`로 low_conf / low_count / high_count 장면 수집</span>
+            </div>
+            <div class="arrow">→</div>
+            <div class="flow-box">
+              <strong>4. Upload bundle</strong>
+              <span>Roboflow relabeling용 ZIP, manifest, README 생성</span>
+            </div>
+            <div class="arrow">→</div>
+            <div class="flow-box">
+              <strong>5. Export retrain loop</strong>
+              <span>`retrain_track_b_export.py`로 정규화, 재학습, 태그 평가, hard sample 재추출</span>
+            </div>
+          </div>
+          <p class="footer-note">현재 병목은 모델 아키텍처가 아니라, 실제 경기 hard frame을 얼마나 일관되게 relabeling 루프로 다시 넣느냐에 있습니다.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="grid">
+        <div class="card span-6">
+          <h2>기준선 성능</h2>
+          <div class="pill">Roboflow V4 player-only baseline</div>
+          <div class="bar-group" style="margin-top: 16px;">
+            <div class="bar-row">
+              <div>Precision</div>
+              <div class="bar-track"><div class="bar-fill" style="width:61.9%;"></div></div>
+              <div>0.619</div>
+            </div>
+            <div class="bar-row">
+              <div>Recall</div>
+              <div class="bar-track"><div class="bar-fill green" style="width:68.6%;"></div></div>
+              <div>0.686</div>
+            </div>
+            <div class="bar-row">
+              <div>mAP50</div>
+              <div class="bar-track"><div class="bar-fill orange" style="width:67.2%;"></div></div>
+              <div>0.672</div>
+            </div>
+            <div class="bar-row">
+              <div>mAP50-95</div>
+              <div class="bar-track"><div class="bar-fill" style="width:43.0%;"></div></div>
+              <div>0.430</div>
+            </div>
+          </div>
+          <p class="footer-note">이 값은 현재 Track B에서 비교 기준으로 삼는 baseline입니다.</p>
+        </div>
+
+        <div class="card span-6">
+          <h2>태그별 평가</h2>
+          <div class="pill">`--skip-train` smoke run, 현재 best checkpoint 재사용</div>
+          <table class="table" style="margin-top: 16px;">
+            <thead>
+              <tr>
+                <th>tag</th>
+                <th>images</th>
+                <th>precision</th>
+                <th>recall</th>
+                <th>mAP50</th>
+                <th>mAP50-95</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>clean</td>
+                <td>73</td>
+                <td>0.629</td>
+                <td>0.747</td>
+                <td>0.696</td>
+                <td>0.439</td>
+              </tr>
+              <tr>
+                <td>partial</td>
+                <td>49</td>
+                <td>0.650</td>
+                <td>0.630</td>
+                <td>0.643</td>
+                <td>0.418</td>
+              </tr>
+              <tr>
+                <td>heavy</td>
+                <td>12</td>
+                <td>0.651</td>
+                <td>0.651</td>
+                <td>0.716</td>
+                <td>0.486</td>
+              </tr>
+            </tbody>
+          </table>
+          <p class="footer-note">이 평가는 “현재 배선이 정상인지”와 “태그별 점검이 가능한지”를 확인하는 데 의미가 있습니다.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="grid">
+        <div class="card span-4">
+          <h2>데이터셋 분할</h2>
+          <div class="bar-group">
+            <div class="bar-row">
+              <div>train</div>
+              <div class="bar-track"><div class="bar-fill" style="width:72.4%;"></div></div>
+              <div>945</div>
+            </div>
+            <div class="bar-row">
+              <div>valid</div>
+              <div class="bar-track"><div class="bar-fill green" style="width:17.4%;"></div></div>
+              <div>227</div>
+            </div>
+            <div class="bar-row">
+              <div>test</div>
+              <div class="bar-track"><div class="bar-fill orange" style="width:10.3%;"></div></div>
+              <div>134</div>
+            </div>
+          </div>
+          <p class="footer-note">총 1,306장 / 총 player label 3,598개</p>
+        </div>
+
+        <div class="card span-4">
+          <h2>Hard mining 큐</h2>
+          <div class="bar-group">
+            <div class="bar-row">
+              <div>clean</div>
+              <div class="bar-track"><div class="bar-fill" style="width:53.75%;"></div></div>
+              <div>43</div>
+            </div>
+            <div class="bar-row">
+              <div>partial</div>
+              <div class="bar-track"><div class="bar-fill green" style="width:33.75%;"></div></div>
+              <div>27</div>
+            </div>
+            <div class="bar-row">
+              <div>heavy</div>
+              <div class="bar-track"><div class="bar-fill orange" style="width:12.5%;"></div></div>
+              <div>10</div>
+            </div>
+          </div>
+          <p class="footer-note">현재 best checkpoint 기준, 다음 검토용 hard sample 80장 자동 선별 완료</p>
+        </div>
+
+        <div class="card span-4">
+          <h2>우선 검토 경기</h2>
+          <table class="table">
+            <thead>
+              <tr>
+                <th>rank</th>
+                <th>match</th>
+                <th>avg confidence</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>1</td><td>match02</td><td>0.2718</td></tr>
+              <tr><td>2</td><td>match09</td><td>0.2827</td></tr>
+              <tr><td>3</td><td>match01</td><td>0.2932</td></tr>
+              <tr><td>4</td><td>match06</td><td>0.2955</td></tr>
+              <tr><td>5</td><td>match010</td><td>0.3151</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="grid">
+        <div class="card span-6">
+          <h2>현재 판단</h2>
+          <div class="callout">
+            지금은 effect 멀티클래스로 넓히는 단계가 아니라, player-only V5를 더 안정화하는 단계입니다. 즉, “더 복잡한 모델”보다 “실제 경기 hard frame relabeling의 품질”이 더 중요합니다.
+          </div>
+          <ul class="list" style="margin-top: 14px;">
+            <li>실제 영상에서 low-confidence 장면이 여전히 많음</li>
+            <li>non-playable scene contamination이 hard frame에 일부 섞여 있음</li>
+            <li>heavy occlusion 예시가 더 필요함</li>
+            <li>effect/object 멀티클래스 확장은 아직 이르다고 판단</li>
+          </ul>
+        </div>
+
+        <div class="card span-6">
+          <h2>다음 액션</h2>
+          <div class="stepper">
+            <div class="step">
+              <div class="dot todo">A</div>
+              <div>
+                <h3>Roboflow에 phase1 36장 업로드</h3>
+                <p>`roboflow_upload_bundle_batch01_phase1.zip`을 먼저 사용</p>
+              </div>
+            </div>
+            <div class="step">
+              <div class="dot todo">B</div>
+              <div>
+                <h3>player-only 규칙으로 relabeling</h3>
+                <p>shield/projectile과 겹쳐도 실제 보이는 선수 몸 기준으로 box 일관성 유지</p>
+              </div>
+            </div>
+            <div class="step">
+              <div class="dot todo">C</div>
+              <div>
+                <h3>Roboflow V5 export 받기</h3>
+                <p>ZIP 또는 export 폴더 형태로 로컬에 가져오기</p>
+              </div>
+            </div>
+            <div class="step">
+              <div class="dot todo">D</div>
+              <div>
+                <h3>재학습 루프 실행</h3>
+                <p><code>./hado_venv/bin/python tools/retrain_track_b_export.py --export-src "&lt;V5 export folder&gt;" --run-name "v5_player_only" --epochs 30 --batch 16</code></p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="card span-12">
+        <h2>참고 파일</h2>
+        <table class="table">
+          <thead>
+            <tr>
+              <th>종류</th>
+              <th>경로</th>
+              <th>용도</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>인계 문서</td>
+              <td><code>docs/TRACK_B_HANDOFF_REPORT_2026_06_09.md</code></td>
+              <td>현재 상태와 다음 작업 정리</td>
+            </tr>
+            <tr>
+              <td>기술 문서</td>
+              <td><code>docs/TRACK_B_TECHNICAL_REPORT_2026_06_09.md</code></td>
+              <td>왜 이 방향으로 가는지 설명</td>
+            </tr>
+            <tr>
+              <td>업로드 번들</td>
+              <td><code>data/track_b_batch_review/roboflow_upload_bundle_batch01_phase1.zip</code></td>
+              <td>첫 relabeling 라운드용</td>
+            </tr>
+            <tr>
+              <td>자동화 스크립트</td>
+              <td><code>tools/retrain_track_b_export.py</code></td>
+              <td>export 이후 루프 자동 실행</td>
+            </tr>
+            <tr>
+              <td>검증 결과</td>
+              <td><code>/Users/jinu/Documents/Codex/2026-06-08/codex-codex/outputs/track_b_retrain_runs/</code></td>
+              <td>smoke run 요약, tag_eval, hard_mining 산출물</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

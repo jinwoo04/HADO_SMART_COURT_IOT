@@ -59,6 +59,14 @@ case "$CMD" in
         # Pi4 라이브 카메라 전체 파이프라인 (NCNN 자동 선택, threaded 캡처)
         python -m src.demo_pose --threaded "${@:2}"
         ;;
+    movement|movement_demo)
+        # [최종발표] HADO 8가지 기본동작 실시간 인식
+        python -m src.movement_demo "${@:2}"
+        ;;
+    movement_live)
+        # Pi4 라이브 카메라 기본동작 인식 (NCNN 자동 선택, threaded 캡처)
+        python -m src.movement_demo --threaded "${@:2}"
+        ;;
     action|action_demo)
         python -m src.action_demo "${@:2}"
         ;;
