@@ -1,16 +1,32 @@
-"""HADO 8가지 기본동작 분류기.
+"""HADO 기본동작 분류기.
 
-하도리듬 PPT + 207장 참조사진 기반 keypoint 규칙 분류기.
+하도리듬 (HADO Rhythm) — 2025 하도리듬 자료정리.pdf + 하도리듬운동트레이닝-1편.pptx 기반.
 
-HADO 8 Basic Movements (하도리듬운동트레이닝-1편 PPT 기준):
-  1. 스쿼트       (squat)          — 양발 넓게, 무릎 굽혀 낮춤
-  2. 런지         (lunge)          — 한발 앞으로, 앞무릎 90도
-  3. 백런지       (back_lunge)     — 한발 뒤로, 뒷무릎 낮춤
-  4. 슬라이드     (slide)          — 측면으로 넓게, 한쪽 무릎 깊게 굽힘
-  5. 런닝슬라이드 (running_slide)  — 동적 측면이동 + 손바닥 지면 터치
-  6. 사이드스텝   (side_step)      — 측면 소폭 이동, 직립 유지
-  7. 버피테스트   (burpee)         — 바닥 플랭크/눕기 ↔ 기립 전환
-  8. 하도리듬박스 (rhythm_box)     — 무릎 높이 킥 + 팔 동작 콤보
+▶ 하도리듬이란?
+  HADO AR 스포츠에서 최적의 퍼포먼스를 위한 기본 동작을 체계적으로 분류하고
+  음악/리듬과 결합해 훈련하는 운동 교육 시스템. 2024 HADO KOREA CUP에서 전 세계
+  대상으로 공식 시연. 개발자: 박진우 (7년 하도 선수 경력, 한국 국가대표).
+
+▶ 하도리듬의 목적
+  ① HADO 경기력 향상을 위한 체계적 기본기 훈련
+  ② 스포츠 과학 + 음악 리듬을 결합한 훈련 방법 개발
+  ③ HADO만의 독창적 동작 어휘 체계 구축 (전 세계 교육 가능 커리큘럼)
+
+▶ 핵심 원칙 (PDF 기반)
+  수직 손 자세 = 공격/차지 준비  ↔  수평/펼친 손 = 방어/쉴드
+  이 원칙은 모든 기본 동작에 공통 적용됨.
+
+▶ 동작 체계 (PDF 레벨 분류)
+  입문(기본): 스쿼트 / 사이드스텝 / 런지 / 슬라이드
+  기술:       런닝슬라이드 / 버피테스트
+  응용/복합:  하도리듬박스 (기→↑→↓→우 반복 콤보)
+  준비:       준비 자세 (기본 직립)
+
+▶ ML 모델 우선 사용
+  models/hado_movement_clf.pkl 이 존재하면 학습된 ML 모델을 우선 사용.
+  없으면 규칙 기반 분류기(rule-based) 사용.
+  라벨링: python -m tools.label_movements
+  학습:   python -m tools.train_movement_model
 
 COCO 17 keypoints:
   0:코  1:왼눈  2:오른눈  3:왼귀  4:오른귀
@@ -21,12 +37,100 @@ COCO 17 keypoints:
 from __future__ import annotations
 
 import math
+import pickle
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Optional
 
 import numpy as np
 
 from src.detector import Detection
+
+# ── ML 모델 자동 로드 ────────────────────────────────────────────
+_ML_MODEL: dict | None = None
+
+def _load_ml_model() -> dict | None:
+    """models/hado_movement_clf.pkl 로드 (존재할 때만)."""
+    global _ML_MODEL
+    if _ML_MODEL is not None:
+        return _ML_MODEL
+    model_path = Path(__file__).resolve().parent.parent / "models/hado_movement_clf.pkl"
+    if not model_path.exists():
+        return None
+    try:
+        with open(model_path, "rb") as f:
+            _ML_MODEL = pickle.load(f)
+        print(f"[HADOMovement] ML 모델 로드: {model_path.name} "
+              f"({_ML_MODEL.get('n_samples', '?')}샘플, "
+              f"{len(_ML_MODEL.get('class_names', []))}클래스)")
+    except Exception as e:
+        print(f"[HADOMovement] ML 모델 로드 실패 — 규칙 기반 분류기 사용: {e}")
+        _ML_MODEL = None
+    return _ML_MODEL
+
+
+def _classify_ml(f: dict[str, float], det: Detection) -> Optional["MovementResult"]:
+    """학습된 ML 모델로 동작 분류. 실패 시 None 반환."""
+    model_data = _load_ml_model()
+    if model_data is None:
+        return None
+
+    try:
+        kpts = det.keypoints
+        if kpts is None:
+            return None
+
+        bbox_h = max(1.0, det.y2 - det.y1)
+        bbox_w = max(1.0, det.x2 - det.x1)
+
+        # shoulder_asym_y, hip_asym_y, body_lean_forward 추가 특징
+        def _kp_xy(i):
+            if kpts[i, 2] >= _KP_CONF:
+                return float(kpts[i, 0]), float(kpts[i, 1])
+            return None
+
+        ls, rs = _kp_xy(5), _kp_xy(6)
+        lh, rh = _kp_xy(11), _kp_xy(12)
+
+        bh = max(1.0, bbox_h)
+        sh_asym = abs(ls[1] - rs[1]) / bh if (ls and rs) else 0.0
+        hi_asym = abs(lh[1] - rh[1]) / bh if (lh and rh) else 0.0
+
+        body_lean = 0.0
+        if ls and rs and lh and rh:
+            sh_cx = (ls[0] + rs[0]) / 2
+            hi_cx = (lh[0] + rh[0]) / 2
+            body_lean = (sh_cx - hi_cx) / max(30.0, f["scale"])
+
+        feat = np.array([
+            f["floor_proximity"],
+            f["bbox_horizontal"],
+            f["stance_width"],
+            f["ankle_asym"],
+            f["knee_raise"],
+            f["crouch_depth"],
+            f["knee_asym"],
+            f["foot_fore_aft"],
+            f["knee_bend_avg"] / 180.0,
+            f["knee_bend_diff"] / 180.0,
+            f["lateral_lean"],
+            f["hand_low"],
+            f["nose_level"],
+            sh_asym,
+            hi_asym,
+            body_lean,
+        ], dtype=np.float32).reshape(1, -1)
+
+        clf = model_data["pipeline"]
+        le  = model_data["label_encoder"]
+        proba = clf.predict_proba(feat)[0]
+        pred_idx = int(np.argmax(proba))
+        pred_label = le.inverse_transform([pred_idx])[0]
+        confidence = float(proba[pred_idx])
+
+        return MovementResult(pred_label, round(confidence, 3), f)
+    except Exception:
+        return None
 
 # ── 키포인트 인덱스 ──────────────────────────────────────────────
 _N          = 0
@@ -282,6 +386,11 @@ def classify_hado_movement(det: Detection) -> Optional[MovementResult]:
     f = _extract_features(det)
     if f is None:
         return None
+
+    # ML 모델이 있으면 우선 사용
+    ml_result = _classify_ml(f, det)
+    if ml_result is not None:
+        return ml_result
 
     fp   = f["floor_proximity"]
     bh   = f["bbox_horizontal"]

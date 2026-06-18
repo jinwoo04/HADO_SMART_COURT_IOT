@@ -106,12 +106,21 @@ case "$CMD" in
     label)
         python -m src.label_intents "${@:2}"
         ;;
+    label-movements|label_movements|label-mv)
+        # 207장 참조 사진 라벨링 도구 (data/reference_actions/labels.csv 생성)
+        python -m tools.label_movements "${@:2}"
+        ;;
+    train-model|train_model|train)
+        # 라벨된 사진으로 ML 동작 분류기 학습 (models/hado_movement_clf.pkl 생성)
+        python -m tools.train_movement_model "${@:2}"
+        ;;
     test)
         python -m pytest tests/ -q
         python -m src.homography
         ;;
     *)
         echo "사용법: ./run.sh [main|calibrate|bench|detect|test|demo|action|w5_measure|annotate|label]"
+        echo "        ML 파이프라인: ./run.sh label-movements  →  ./run.sh train-model  →  ./run.sh movement"
         exit 1
         ;;
 esac

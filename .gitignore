@@ -17,9 +17,11 @@ data/snapshots/
 data/*.mp4
 data/*.png
 
-# YOLO 모델 (대용량 바이너리)
-models/
+# YOLO 모델 (대용량 바이너리) — *.pt 개별 파일 제외
 *.pt
+# models/ 폴더에서 대용량 pt 외 pkl/json은 커밋 허용
+models/*.pt
+models/yolov8*
 
 # Claude Code
 .claude/

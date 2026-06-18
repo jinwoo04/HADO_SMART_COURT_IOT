@@ -33,8 +33,9 @@ def _find_korean_font() -> Optional[str]:
     import os
     env_font = os.environ.get("HADO_KR_FONT")  # 환경변수 우선 (배포 환경 유연성)
     candidates = ([env_font] if env_font else []) + [
-        "/Library/Fonts/AppleSDGothicNeo.ttc",                    # macOS (Sequoia/Sonoma)
-        "/System/Library/Fonts/Supplemental/AppleGothic.ttf",     # macOS (older)
+        "/System/Library/Fonts/AppleSDGothicNeo.ttc",             # macOS (Sequoia/Sonoma)
+        "/Library/Fonts/AppleSDGothicNeo.ttc",                    # macOS (older location)
+        "/System/Library/Fonts/Supplemental/AppleGothic.ttf",     # macOS (fallback)
         "/Library/Fonts/NanumGothic.ttf",                         # macOS (사용자 설치)
         str(Path.home() / ".fonts" / "NanumGothic.ttf"),          # 사용자 설치 (Pi4 포함)
         "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",        # Ubuntu/Pi OS
